@@ -38,6 +38,10 @@ else
                     }
                 </div>
                 <ReserveTray Reserve="view.State.ReserveOf(top)" Color="top" />
+                @if (view.Clock is { IsUntimed: false } topClock)
+                {
+                    <ClockDisplay Snapshot="topClock" Side="ToClockSide(top)" />
+                }
             </div>
 
             <Board State="view.State"
@@ -65,6 +69,10 @@ else
                              Placeable="PlaceableTypes"
                              Selected="_selectedReserve"
                              OnSelect="SelectReserve" />
+                @if (view.Clock is { IsUntimed: false } bottomClock)
+                {
+                    <ClockDisplay Snapshot="bottomClock" Side="ToClockSide(orientation)" />
+                }
             </div>
         </section>
 
@@ -264,6 +272,8 @@ else
     }
 
     public void Dispose() => Unsubscribe();
+
+    private static ClockSide ToClockSide(Color color) => color == Color.White ? ClockSide.White : ClockSide.Black;
 
     private static bool Seated(GameView view, Color color) => color == Color.White ? view.WhiteSeated : view.BlackSeated;
 

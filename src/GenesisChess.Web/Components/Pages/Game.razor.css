@@ -12,11 +12,21 @@
 }
 
 .player-strip {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    justify-content: space-between;
     gap: 0.5rem 1rem;
+}
+
+@media (max-width: 520px) {
+    .player-strip {
+        grid-template-columns: 1fr auto;
+    }
+
+    .player-strip ::deep .tray {
+        grid-column: 1 / -1;
+        order: 3;
+    }
 }
 
 .who {

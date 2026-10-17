@@ -1,0 +1,74 @@
+@* One side's clock. Counts down between server pushes and re-syncs on every new snapshot. *@
+@implements IDisposable
+@inject TimeProvider Time
+
+<div class="clock @(IsRunning ? "running" : null) @(IsLow ? "low" : null) @(_shown == "0:00.0" ? "flagged" : null)"
+     role="timer" aria-label="@($"{Side} clock {_shown}")">
+    @_shown
+</div>
+
+@code {
+    private static readonly TimeSpan Tick = TimeSpan.FromMilliseconds(100);
+    private ITimer? _timer;
+    private string _shown = string.Empty;
+
+    [Parameter, EditorRequired]
+    public ClockSnapshot Snapshot { get; set; } = default!;
+
+    [Parameter]
+    public ClockSide Side { get; set; }
+
+    private bool IsRunning => Snapshot.Running == Side;
+
+    private bool IsLow => Remaining() < TimeSpan.FromSeconds(20);
+
+    protected override void OnParametersSet()
+    {
+        _shown = Format(Remaining());
+        _timer?.Dispose();
+        _timer = IsRunning ? Time.CreateTimer(_ => OnTick(), null, Tick, Tick) : null;
+    }
+
+    private TimeSpan Remaining()
+    {
+        var remaining = Snapshot.RemainingFor(Side);
+        if (IsRunning)
+        {
+            remaining -= Time.GetUtcNow() - Snapshot.TakenAt;
+        }
+
+        return remaining < TimeSpan.Zero ? TimeSpan.Zero : remaining;
+    }
+
+    private void OnTick()
+    {
+        var text = Format(Remaining());
+        if (text == _shown)
+        {
+            return; // Only push a render when the visible digits change.
+        }
+
+        _ = InvokeAsync(() =>
+        {
+            _shown = text;
+            StateHasChanged();
+        });
+    }
+
+    internal static string Format(TimeSpan t)
+    {
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        if (t < TimeSpan.FromSeconds(10))
+        {
+            // Truncate, never round up, so the display never shows time the player doesn't have.
+            var tenths = (int)(t.Ticks / TimeSpan.TicksPerMillisecond / 100);
+            return string.Create(culture, $"0:0{tenths / 10}.{tenths % 10}");
+        }
+
+        return t.TotalHours >= 1
+            ? string.Create(culture, $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}")
+            : string.Create(culture, $"{(int)t.TotalMinutes}:{t.Seconds:00}");
+    }
+
+    public void Dispose() => _timer?.Dispose();
+}
