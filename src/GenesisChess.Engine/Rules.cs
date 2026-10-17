@@ -63,8 +63,20 @@ public static class Rules
             return state.Board.With((move.From, null), (captured, null), (move.To, placed));
         }
 
+        if (IsCastling(move, piece))
+        {
+            var kingside = move.To.File > move.From.File;
+            var rookFrom = new Square(kingside ? 7 : 0, move.From.Rank);
+            var rookTo = new Square(kingside ? 5 : 3, move.From.Rank);
+            var rook = state.Board[rookFrom]!.Value.AsMoved();
+            return state.Board.With((move.From, null), (rookFrom, null), (move.To, placed), (rookTo, rook));
+        }
+
         return state.Board.With((move.From, null), (move.To, placed));
     }
+
+    internal static bool IsCastling(MoveAction move, Piece piece) =>
+        piece.Type == PieceType.King && Math.Abs(move.To.File - move.From.File) == 2;
 
     private static bool IsEnPassant(GameState state, MoveAction move, Piece piece) =>
         piece.Type == PieceType.Pawn && move.To == state.EnPassantTarget && move.From.File != move.To.File;

@@ -27,7 +27,7 @@ public static class MoveGenerator
                 PieceType.Bishop => SlideMoves(state.Board, from, color, Attacks.BishopDirections),
                 PieceType.Rook => SlideMoves(state.Board, from, color, Attacks.RookDirections),
                 PieceType.Queen => SlideMoves(state.Board, from, color, [.. Attacks.RookDirections, .. Attacks.BishopDirections]),
-                PieceType.King => StepMoves(state.Board, from, color, Attacks.KingOffsets),
+                PieceType.King => StepMoves(state.Board, from, color, Attacks.KingOffsets).Concat(CastlingMoves(state, color)),
                 _ => [],
             };
 
@@ -35,6 +35,40 @@ public static class MoveGenerator
             {
                 yield return move;
             }
+        }
+    }
+
+    /// <summary>
+    /// Castling with a rook that was placed on its corner and has never moved, under the usual
+    /// conditions: empty path, king not in check and not passing through an attacked square.
+    /// Landing in check is filtered by the general legality check.
+    /// </summary>
+    private static IEnumerable<MoveAction> CastlingMoves(GameState state, Color color)
+    {
+        var king = GameState.KingStart(color);
+        var rank = color.BackRank();
+        var enemy = color.Opponent();
+
+        foreach (var kingside in new[] { true, false })
+        {
+            if (!state.CanStillCastle(color, kingside))
+            {
+                continue;
+            }
+
+            int[] between = kingside ? [5, 6] : [1, 2, 3];
+            if (!between.All(f => state.Board.IsEmpty(new Square(f, rank))))
+            {
+                continue;
+            }
+
+            var passing = new Square(kingside ? 5 : 3, rank);
+            if (Attacks.IsAttacked(state.Board, king, enemy) || Attacks.IsAttacked(state.Board, passing, enemy))
+            {
+                continue;
+            }
+
+            yield return new MoveAction(king, new Square(kingside ? 6 : 2, rank));
         }
     }
 
