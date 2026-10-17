@@ -80,6 +80,32 @@
     margin-bottom: 0.5rem;
 }
 
+.invite p {
+    margin: 0 0 0.6rem;
+    font-size: 0.9rem;
+}
+
+.invite-row {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.invite-row input {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.85rem;
+}
+
+.action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.offer {
+    margin: 0 0 0.6rem;
+}
+
 .not-found {
     max-width: 30rem;
     margin: 2rem auto;

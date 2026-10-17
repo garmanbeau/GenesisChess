@@ -1,7 +1,10 @@
 @page "/game/{Id}"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@implements IDisposable
 @inject GameService Games
 @inject PlayerTokenStore Tokens
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <PageTitle>Genesis Chess · @Id</PageTitle>
 
@@ -79,6 +82,59 @@ else
                 }
             </div>
 
+            @if (view.Status == GameStatus.WaitingForOpponent || view.Seat == Seat.Spectator)
+            {
+                <div class="card invite">
+                    <h2 class="panel-title">@(view.Seat == Seat.Spectator ? "Spectating" : "Invite a friend")</h2>
+                    @if (view.Seat != Seat.Spectator)
+                    {
+                        <p class="muted">Send this link. The first person to open it plays @(orientation.Opponent()).</p>
+                    }
+                    <div class="invite-row">
+                        <input type="text" readonly value="@InviteLink" aria-label="Invite link" @ref="_inviteInput" />
+                        <button class="btn btn-primary" @onclick="CopyInviteAsync">@(_copied ? "Copied!" : "Copy")</button>
+                    </div>
+                </div>
+            }
+
+            @if (view.Status == GameStatus.InProgress && view.Seat != Seat.Spectator)
+            {
+                <div class="card actions">
+                    @if (view.DrawOfferedBy == orientation.Opponent())
+                    {
+                        <p class="offer"><strong>@view.DrawOfferedBy offers a draw.</strong></p>
+                        <div class="action-row">
+                            <button class="btn btn-primary" @onclick="() => Run(s => s.OfferDraw(_token))">Accept draw</button>
+                            <button class="btn" @onclick="() => Run(s => s.DeclineDraw(_token))">Decline</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="action-row">
+                            <button class="btn" disabled="@(view.DrawOfferedBy == orientation)" @onclick="() => Run(s => s.OfferDraw(_token))">
+                                @(view.DrawOfferedBy == orientation ? "Draw offered" : "Offer draw")
+                            </button>
+                            @if (_confirmResign)
+                            {
+                                <button class="btn btn-danger" @onclick="() => Run(s => s.Resign(_token))">Confirm resign</button>
+                                <button class="btn" @onclick="() => _confirmResign = false">Cancel</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-danger" @onclick="() => _confirmResign = true">Resign</button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (view.Status == GameStatus.Finished)
+            {
+                <div class="card actions">
+                    <a class="btn btn-primary" href="/">New game</a>
+                </div>
+            }
+
             <div class="card">
                 <h2 class="panel-title">Moves</h2>
                 <MoveList Moves="view.Moves" />
@@ -103,9 +159,14 @@ else
     private Square? _selected;
     private PieceType? _selectedReserve;
     private MoveAction? _pendingPromotion;
+    private bool _copied;
+    private bool _confirmResign;
+    private ElementReference _inviteInput;
 
     [Parameter]
     public string Id { get; set; } = string.Empty;
+
+    private string InviteLink => $"{Navigation.BaseUri}game/{Id}";
 
     private IReadOnlySet<Square> Targets =>
         _view is null ? new HashSet<Square>()
@@ -125,9 +186,11 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
+        Unsubscribe();
         _session = Games.Find(Id);
         if (_session is not null)
         {
+            _session.Changed += OnSessionChanged;
             var stored = await Tokens.GetAsync(Id);
             var joined = _session.Join(stored);
             if (joined.Token is not null && joined.Token != stored)
@@ -142,7 +205,65 @@ else
         _loaded = true;
     }
 
-    private void Refresh() => _view = _session?.GetView(_token);
+    private void Refresh()
+    {
+        _view = _session?.GetView(_token);
+        if (_view is not { IsYourTurn: true })
+        {
+            _selected = null;
+            _selectedReserve = null;
+            _pendingPromotion = null;
+        }
+
+        if (_view?.Status != GameStatus.InProgress)
+        {
+            _confirmResign = false;
+        }
+    }
+
+    /// <summary>Raised on whichever thread changed the session; marshal onto this circuit.</summary>
+    private void OnSessionChanged(GameSession session) => _ = InvokeAsync(() =>
+    {
+        Refresh();
+        StateHasChanged();
+    });
+
+    private void Run(Func<GameSession, CommandResult> command)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        var result = command(_session);
+        _error = result.Succeeded ? null : result.Error;
+        _confirmResign = false;
+        Refresh();
+    }
+
+    private async Task CopyInviteAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", InviteLink);
+            _copied = true;
+        }
+        catch (JSException)
+        {
+            // Clipboard needs a secure context (HTTPS or localhost); select the text so it can be copied by hand.
+            await JS.InvokeVoidAsync("genesisChess.select", _inviteInput);
+        }
+    }
+
+    private void Unsubscribe()
+    {
+        if (_session is not null)
+        {
+            _session.Changed -= OnSessionChanged;
+        }
+    }
+
+    public void Dispose() => Unsubscribe();
 
     private static bool Seated(GameView view, Color color) => color == Color.White ? view.WhiteSeated : view.BlackSeated;
 
