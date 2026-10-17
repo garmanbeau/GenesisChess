@@ -3,6 +3,7 @@
     <Project Path="src/GenesisChess.Application/GenesisChess.Application.csproj" />
     <Project Path="src/GenesisChess.Clock/GenesisChess.Clock.csproj" />
     <Project Path="src/GenesisChess.Engine/GenesisChess.Engine.csproj" />
+    <Project Path="src/GenesisChess.Web/GenesisChess.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/GenesisChess.Application.Tests/GenesisChess.Application.Tests.csproj" />

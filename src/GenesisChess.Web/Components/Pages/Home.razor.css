@@ -1,0 +1,93 @@
+.home {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+    grid-template-areas:
+        "intro new"
+        "join new";
+    gap: 1.25rem;
+    align-items: start;
+}
+
+.intro {
+    grid-area: intro;
+}
+
+.new-game {
+    grid-area: new;
+}
+
+.join {
+    grid-area: join;
+}
+
+.rules {
+    padding-left: 1.2rem;
+    color: var(--muted);
+}
+
+.rules li {
+    margin-bottom: 0.35rem;
+}
+
+.label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin: 1.1rem 0 0.5rem;
+}
+
+.color-choice {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.color-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.9rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-2);
+    color: var(--text);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.color-option.selected {
+    border-color: var(--accent);
+    outline: 2px solid var(--accent);
+}
+
+.color-glyph {
+    font-size: 1.4rem;
+    line-height: 1;
+}
+
+.create {
+    margin-top: 1.4rem;
+    width: 100%;
+}
+
+.join-form {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.join-form input {
+    flex: 1;
+    min-width: 0;
+}
+
+@media (max-width: 760px) {
+    .home {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "intro"
+            "new"
+            "join";
+    }
+}

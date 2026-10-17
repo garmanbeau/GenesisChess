@@ -1,0 +1,95 @@
+@* Choose a preset, a custom base + increment, or untimed. *@
+
+<div class="tc-picker">
+    <div class="tc-grid" role="radiogroup" aria-label="Time control">
+        @foreach (var preset in TimeControl.Presets)
+        {
+            <button type="button" role="radio" aria-checked="@(_mode == Mode.Preset && preset == Value)"
+                    class="tc-option @(_mode == Mode.Preset && preset == Value ? "selected" : null)"
+                    @onclick="() => SelectPreset(preset)">
+                <span class="tc-value">@preset</span>
+                <span class="tc-category">@preset.Category</span>
+            </button>
+        }
+        <button type="button" role="radio" aria-checked="@(_mode == Mode.Custom)"
+                class="tc-option @(_mode == Mode.Custom ? "selected" : null)" @onclick="SelectCustom">
+            <span class="tc-value">Custom</span>
+            <span class="tc-category">Your rules</span>
+        </button>
+        <button type="button" role="radio" aria-checked="@(_mode == Mode.Untimed)"
+                class="tc-option @(_mode == Mode.Untimed ? "selected" : null)" @onclick="SelectUntimed">
+            <span class="tc-value">∞</span>
+            <span class="tc-category">Untimed</span>
+        </button>
+    </div>
+
+    @if (_mode == Mode.Custom)
+    {
+        <div class="tc-custom">
+            <label>
+                Minutes per side
+                <input type="number" min="0.5" max="180" step="0.5" value="@_customMinutes"
+                       @onchange="e => SetCustom(minutes: e.Value)" />
+            </label>
+            <label>
+                Increment (seconds)
+                <input type="number" min="0" max="180" step="1" value="@_customIncrement"
+                       @onchange="e => SetCustom(increment: e.Value)" />
+            </label>
+            <span class="muted">@(Value.IsUntimed ? string.Empty : $"{Value} · {Value.Category}")</span>
+        </div>
+    }
+</div>
+
+@code {
+    private enum Mode { Preset, Custom, Untimed }
+
+    private Mode _mode = Mode.Preset;
+    private double _customMinutes = 10;
+    private int _customIncrement = 5;
+
+    [Parameter, EditorRequired]
+    public TimeControl Value { get; set; } = TimeControl.Untimed;
+
+    [Parameter]
+    public EventCallback<TimeControl> ValueChanged { get; set; }
+
+    protected override void OnInitialized()
+    {
+        _mode = Value.IsUntimed ? Mode.Untimed : TimeControl.Presets.Contains(Value) ? Mode.Preset : Mode.Custom;
+    }
+
+    private Task SelectPreset(TimeControl preset)
+    {
+        _mode = Mode.Preset;
+        return ValueChanged.InvokeAsync(preset);
+    }
+
+    private Task SelectUntimed()
+    {
+        _mode = Mode.Untimed;
+        return ValueChanged.InvokeAsync(TimeControl.Untimed);
+    }
+
+    private Task SelectCustom()
+    {
+        _mode = Mode.Custom;
+        return ValueChanged.InvokeAsync(TimeControl.FromMinutes(_customMinutes, _customIncrement));
+    }
+
+    private Task SetCustom(object? minutes = null, object? increment = null)
+    {
+        var culture = System.Globalization.CultureInfo.InvariantCulture;
+        if (minutes is not null && double.TryParse(minutes.ToString(), culture, out var m))
+        {
+            _customMinutes = Math.Clamp(m, 0.5, 180);
+        }
+
+        if (increment is not null && int.TryParse(increment.ToString(), culture, out var i))
+        {
+            _customIncrement = Math.Clamp(i, 0, 180);
+        }
+
+        return ValueChanged.InvokeAsync(TimeControl.FromMinutes(_customMinutes, _customIncrement));
+    }
+}

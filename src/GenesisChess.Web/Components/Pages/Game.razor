@@ -1,0 +1,11 @@
+@page "/game/{Id}"
+
+<PageTitle>Genesis Chess · @Id</PageTitle>
+
+<h1>Game @Id</h1>
+<p class="muted">The board arrives in the next step.</p>
+
+@code {
+    [Parameter]
+    public string Id { get; set; } = string.Empty;
+}
