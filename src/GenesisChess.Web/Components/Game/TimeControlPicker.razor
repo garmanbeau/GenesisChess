@@ -5,18 +5,19 @@
         @foreach (var preset in TimeControl.Presets)
         {
             <button type="button" role="radio" aria-checked="@(_mode == Mode.Preset && preset == Value)"
+                    aria-label="@($"{preset} {preset.Category}")"
                     class="tc-option @(_mode == Mode.Preset && preset == Value ? "selected" : null)"
                     @onclick="() => SelectPreset(preset)">
                 <span class="tc-value">@preset</span>
                 <span class="tc-category">@preset.Category</span>
             </button>
         }
-        <button type="button" role="radio" aria-checked="@(_mode == Mode.Custom)"
+        <button type="button" role="radio" aria-checked="@(_mode == Mode.Custom)" aria-label="Custom time control"
                 class="tc-option @(_mode == Mode.Custom ? "selected" : null)" @onclick="SelectCustom">
             <span class="tc-value">Custom</span>
             <span class="tc-category">Your rules</span>
         </button>
-        <button type="button" role="radio" aria-checked="@(_mode == Mode.Untimed)"
+        <button type="button" role="radio" aria-checked="@(_mode == Mode.Untimed)" aria-label="Untimed"
                 class="tc-option @(_mode == Mode.Untimed ? "selected" : null)" @onclick="SelectUntimed">
             <span class="tc-value">∞</span>
             <span class="tc-category">Untimed</span>
