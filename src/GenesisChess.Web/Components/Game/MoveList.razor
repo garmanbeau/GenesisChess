@@ -1,0 +1,31 @@
+@* Moves in numbered White/Black pairs, newest scrolled into view. *@
+
+<div class="moves" aria-label="Move list">
+    @if (Moves.Count == 0)
+    {
+        <p class="muted none">No moves yet.</p>
+    }
+    else
+    {
+        <ol>
+            @for (var i = 0; i < Moves.Count; i += 2)
+            {
+                var white = Moves[i];
+                var black = i + 1 < Moves.Count ? Moves[i + 1] : null;
+                <li>
+                    <span class="num">@((i / 2) + 1).</span>
+                    <span class="ply @(white == Moves[^1] ? "latest" : null) @(white.Action is PlaceAction ? "drop" : null)">@white.San</span>
+                    @if (black is not null)
+                    {
+                        <span class="ply @(black == Moves[^1] ? "latest" : null) @(black.Action is PlaceAction ? "drop" : null)">@black.San</span>
+                    }
+                </li>
+            }
+        </ol>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<MoveRecord> Moves { get; set; } = [];
+}

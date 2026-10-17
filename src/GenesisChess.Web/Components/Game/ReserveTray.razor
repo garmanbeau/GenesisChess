@@ -1,0 +1,55 @@
+@* A player's reserve: the pieces they can still place. *@
+
+<div class="tray @(Interactive ? "interactive" : null)" aria-label="@Color reserve">
+    @if (Reserve.IsEmpty)
+    {
+        <span class="empty muted">Reserve empty</span>
+    }
+    else
+    {
+        @foreach (var type in Order)
+        {
+            var count = Reserve.Count(type);
+            if (count == 0)
+            {
+                continue;
+            }
+
+            var placeable = Interactive && Placeable.Contains(type);
+            <button type="button"
+                    class="slot @(type == Selected ? "selected" : null) @(placeable ? null : "inert")"
+                    disabled="@(!placeable)"
+                    aria-pressed="@(type == Selected)"
+                    aria-label="@($"Place {Color} {type}, {count} left")"
+                    @onclick="() => OnSelect.InvokeAsync(type)">
+                <span class="piece @PieceGlyph.CssClass(Color)" aria-hidden="true">@PieceGlyph.For(type)</span>
+                <span class="count">@count</span>
+            </button>
+        }
+    }
+</div>
+
+@code {
+    private static readonly PieceType[] Order =
+        [PieceType.Queen, PieceType.Rook, PieceType.Bishop, PieceType.Knight, PieceType.Pawn];
+
+    [Parameter, EditorRequired]
+    public Reserve Reserve { get; set; } = Reserve.Empty;
+
+    [Parameter]
+    public Color Color { get; set; }
+
+    /// <summary>Whether the viewer can place from this tray right now.</summary>
+    [Parameter]
+    public bool Interactive { get; set; }
+
+    /// <summary>Types that have at least one legal placement this turn.</summary>
+    [Parameter]
+    public IReadOnlySet<PieceType> Placeable { get; set; } = new HashSet<PieceType>();
+
+    [Parameter]
+    public PieceType? Selected { get; set; }
+
+    [Parameter]
+    public EventCallback<PieceType> OnSelect { get; set; }
+}

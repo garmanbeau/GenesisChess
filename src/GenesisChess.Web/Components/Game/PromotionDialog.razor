@@ -1,0 +1,29 @@
+@* Asks which piece a pawn promotes to. *@
+
+<div class="backdrop" @onclick="OnCancel">
+    <div class="dialog card" role="dialog" aria-modal="true" aria-label="Choose promotion" @onclick:stopPropagation="true">
+        <h3>Promote to</h3>
+        <div class="choices">
+            @foreach (var type in Choices)
+            {
+                <button type="button" class="choice" aria-label="@type" @onclick="() => OnChoose.InvokeAsync(type)">
+                    <span class="piece @PieceGlyph.CssClass(Color)" aria-hidden="true">@PieceGlyph.For(type)</span>
+                </button>
+            }
+        </div>
+        <button type="button" class="btn" @onclick="OnCancel">Cancel</button>
+    </div>
+</div>
+
+@code {
+    private static readonly PieceType[] Choices = [PieceType.Queen, PieceType.Rook, PieceType.Bishop, PieceType.Knight];
+
+    [Parameter]
+    public Color Color { get; set; }
+
+    [Parameter]
+    public EventCallback<PieceType> OnChoose { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+}

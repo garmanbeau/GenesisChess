@@ -1,0 +1,104 @@
+@* The 8x8 board. Purely presentational: the page decides what a click means. *@
+
+<div class="board @(Orientation == Color.Black ? "flipped" : null) @(Interactive ? "interactive" : null)"
+     role="grid" aria-label="Chess board">
+    @foreach (var rank in Ranks)
+    {
+        @foreach (var file in Files)
+        {
+            var square = new Square(file, rank);
+            var piece = State.Board[square];
+            var isTarget = Targets.Contains(square);
+            <button type="button"
+                    class="@SquareClasses(square, piece, isTarget)"
+                    aria-label="@Describe(square, piece)"
+                    @onclick="() => OnSquareClick.InvokeAsync(square)">
+                @if (piece is { } p)
+                {
+                    <span class="piece @PieceGlyph.CssClass(p.Color)" aria-hidden="true">@PieceGlyph.For(p.Type)</span>
+                }
+                @if (isTarget)
+                {
+                    <span class="@(piece is null ? "dot" : "ring")" aria-hidden="true"></span>
+                }
+                @if (file == Files[0])
+                {
+                    <span class="coord rank-coord" aria-hidden="true">@(rank + 1)</span>
+                }
+                @if (rank == Ranks[^1])
+                {
+                    <span class="coord file-coord" aria-hidden="true">@square.FileLetter</span>
+                }
+            </button>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public GameState State { get; set; } = default!;
+
+    [Parameter]
+    public Color Orientation { get; set; } = Color.White;
+
+    [Parameter]
+    public bool Interactive { get; set; }
+
+    [Parameter]
+    public Square? Selected { get; set; }
+
+    [Parameter]
+    public IReadOnlySet<Square> Targets { get; set; } = new HashSet<Square>();
+
+    /// <summary>Squares to tint as the last action (from/to, or the placement square).</summary>
+    [Parameter]
+    public IReadOnlySet<Square> LastAction { get; set; } = new HashSet<Square>();
+
+    [Parameter]
+    public Square? CheckedKing { get; set; }
+
+    /// <summary>Half of the board to tint as the current placement zone, if a reserve piece is selected.</summary>
+    [Parameter]
+    public Color? PlacementZone { get; set; }
+
+    [Parameter]
+    public EventCallback<Square> OnSquareClick { get; set; }
+
+    private int[] Ranks => Orientation == Color.White ? [7, 6, 5, 4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5, 6, 7];
+
+    private int[] Files => Orientation == Color.White ? [0, 1, 2, 3, 4, 5, 6, 7] : [7, 6, 5, 4, 3, 2, 1, 0];
+
+    private string SquareClasses(Square square, Piece? piece, bool isTarget)
+    {
+        var classes = new List<string>(6) { "sq", (square.File + square.Rank) % 2 == 0 ? "dark" : "light" };
+        if (LastAction.Contains(square))
+        {
+            classes.Add("last");
+        }
+
+        if (square == Selected)
+        {
+            classes.Add("selected");
+        }
+
+        if (square == CheckedKing)
+        {
+            classes.Add("check");
+        }
+
+        if (isTarget)
+        {
+            classes.Add("target");
+        }
+
+        if (PlacementZone is { } zone && zone.IsOwnHalf(square.Rank))
+        {
+            classes.Add("zone");
+        }
+
+        return string.Join(' ', classes);
+    }
+
+    private static string Describe(Square square, Piece? piece) =>
+        piece is { } p ? $"{square}, {p.Color} {p.Type}" : $"{square}, empty";
+}
