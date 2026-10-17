@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\GenesisChess.Engine\GenesisChess.Engine.csproj" />
+    <ProjectReference Include="..\..\GenesisChess.Engine\GenesisChess.Engine.csproj" />
   </ItemGroup>
 
 </Project>

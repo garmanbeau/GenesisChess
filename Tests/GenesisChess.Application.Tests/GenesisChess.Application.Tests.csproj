@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\GenesisChess.Clock\GenesisChess.Clock.csproj" />
+    <ProjectReference Include="..\..\GenesisChess.Application\GenesisChess.Application.csproj" />
   </ItemGroup>
 
 </Project>

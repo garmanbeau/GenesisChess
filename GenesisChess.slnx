@@ -1,13 +1,11 @@
 <Solution>
-  <Folder Name="/src/">
-    <Project Path="src/GenesisChess.Application/GenesisChess.Application.csproj" />
-    <Project Path="src/GenesisChess.Clock/GenesisChess.Clock.csproj" />
-    <Project Path="src/GenesisChess.Engine/GenesisChess.Engine.csproj" />
-    <Project Path="src/GenesisChess.Web/GenesisChess.Web.csproj" />
-  </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/GenesisChess.Application.Tests/GenesisChess.Application.Tests.csproj" />
-    <Project Path="tests/GenesisChess.Clock.Tests/GenesisChess.Clock.Tests.csproj" />
-    <Project Path="tests/GenesisChess.Engine.Tests/GenesisChess.Engine.Tests.csproj" />
+  <Project Path="GenesisChess.Application/GenesisChess.Application.csproj" />
+  <Project Path="GenesisChess.Clock/GenesisChess.Clock.csproj" />
+  <Project Path="GenesisChess.Engine/GenesisChess.Engine.csproj" />
+  <Project Path="GenesisChess.Web/GenesisChess.Web.csproj" />
+  <Folder Name="/Tests/">
+    <Project Path="Tests/GenesisChess.Application.Tests/GenesisChess.Application.Tests.csproj" />
+    <Project Path="Tests/GenesisChess.Clock.Tests/GenesisChess.Clock.Tests.csproj" />
+    <Project Path="Tests/GenesisChess.Engine.Tests/GenesisChess.Engine.Tests.csproj" />
   </Folder>
 </Solution>

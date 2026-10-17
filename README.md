@@ -32,12 +32,11 @@ You pick a time control when you create the game: a preset (1+0 up to 30+20), a 
 
 ```
 GenesisChess.slnx
-src/
-  GenesisChess.Engine/        rules only: board, reserves, move/placement generation, outcomes, notation
-  GenesisChess.Clock/         time controls and a TimeProvider-driven chess clock (no engine dependency)
-  GenesisChess.Application/   game sessions, seats/tokens, clock integration, IGameStore, cleanup
-  GenesisChess.Web/           Blazor Web App (Interactive Server): UI only
-tests/
+GenesisChess.Engine/          rules only: board, reserves, move/placement generation, outcomes, notation
+GenesisChess.Clock/           time controls and a TimeProvider-driven chess clock (no engine dependency)
+GenesisChess.Application/     game sessions, seats/tokens, clock integration, IGameStore, cleanup
+GenesisChess.Web/             Blazor Web App (Interactive Server): UI only
+Tests/
   GenesisChess.Engine.Tests/  GenesisChess.Clock.Tests/  GenesisChess.Application.Tests/
 ```
 
@@ -52,7 +51,7 @@ dotnet test GenesisChess.slnx
 ```
 
 ```bash
-dotnet run --project src/GenesisChess.Web -c Release --launch-profile http
+dotnet run --project GenesisChess.Web -c Release --launch-profile http
 ```
 
 Then open http://localhost:5000:
