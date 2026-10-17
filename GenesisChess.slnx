@@ -1,2 +1,8 @@
 ﻿<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GenesisChess.Engine/GenesisChess.Engine.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GenesisChess.Engine.Tests/GenesisChess.Engine.Tests.csproj" />
+  </Folder>
 </Solution>
