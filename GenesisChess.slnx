@@ -1,9 +1,11 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/GenesisChess.Application/GenesisChess.Application.csproj" />
     <Project Path="src/GenesisChess.Clock/GenesisChess.Clock.csproj" />
     <Project Path="src/GenesisChess.Engine/GenesisChess.Engine.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/GenesisChess.Application.Tests/GenesisChess.Application.Tests.csproj" />
     <Project Path="tests/GenesisChess.Clock.Tests/GenesisChess.Clock.Tests.csproj" />
     <Project Path="tests/GenesisChess.Engine.Tests/GenesisChess.Engine.Tests.csproj" />
   </Folder>
