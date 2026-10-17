@@ -28,6 +28,16 @@ public sealed class GameCleanupService(IGameStore store, TimeProvider time, IOpt
     internal int RemoveIdle()
     {
         var cutoff = time.GetUtcNow() - options.Value.IdleTimeout;
-        return store.All().Where(s => s.LastActivity < cutoff).ToList().Count(s => store.Remove(s.Id));
+        var removed = 0;
+        foreach (var session in store.All().Where(s => s.LastActivity < cutoff).ToList())
+        {
+            if (store.Remove(session.Id))
+            {
+                session.Dispose();
+                removed++;
+            }
+        }
+
+        return removed;
     }
 }

@@ -4,25 +4,34 @@ using GenesisChess.Engine;
 namespace GenesisChess.Application;
 
 /// <summary>
-/// One live game: rules state, seats and draw offers. All mutations are serialized by a lock and
-/// announced through <see cref="Changed"/> after the lock is released.
+/// One live game: rules state, seats, draw offers and the clock. All mutations are serialized by a
+/// lock and announced through <see cref="Changed"/> after the lock is released.
 /// </summary>
-public sealed class GameSession
+/// <remarks>
+/// Clock policy: nothing ticks until White's first action, which starts Black's time. From then on
+/// every action presses the clock (deduct elapsed, add increment). A timer fires when the side to
+/// move runs out so a flag is caught even if nobody acts.
+/// </remarks>
+public sealed class GameSession : IDisposable
 {
     private readonly Lock _gate = new();
     private readonly TimeProvider _time;
+    private readonly ChessClock _clock;
     private readonly List<MoveRecord> _moves = [];
+    private ITimer? _flagTimer;
     private string? _whiteToken;
     private string? _blackToken;
-    private GameState _state = GameState.Initial();
+    private GameState _state;
     private GameOutcome? _outcome;
     private Color? _drawOfferedBy;
 
-    internal GameSession(string id, TimeControl timeControl, TimeProvider time)
+    internal GameSession(string id, TimeControl timeControl, TimeProvider time, GameState? initialState = null)
     {
         Id = id;
         TimeControl = timeControl;
         _time = time;
+        _state = initialState ?? GameState.Initial();
+        _clock = new ChessClock(timeControl, time);
         CreatedAt = LastActivity = time.GetUtcNow();
     }
 
@@ -108,6 +117,12 @@ public sealed class GameSession
             return CommandResult.Fail("It is not your turn.");
         }
 
+        if (_clock.IsFlagged(ToClock(color)))
+        {
+            FinishOnTime(color);
+            return CommandResult.Fail("Your time ran out.");
+        }
+
         var before = _state;
         var result = Rules.Apply(before, action);
         if (!result.IsSuccess)
@@ -116,6 +131,15 @@ public sealed class GameSession
         }
 
         _state = result.State;
+        if (_clock.Status == ClockStatus.NotStarted)
+        {
+            _clock.Start(ToClock(color.Opponent())); // White's first action is free.
+        }
+        else
+        {
+            _clock.Press(ToClock(color));
+        }
+
         _moves.Add(new MoveRecord(_moves.Count + 1, color, action, Notation.ToSan(before, action)));
         if (_drawOfferedBy == color.Opponent())
         {
@@ -125,6 +149,10 @@ public sealed class GameSession
         if (Outcomes.Evaluate(_state) is { } outcome)
         {
             Finish(outcome);
+        }
+        else
+        {
+            ScheduleFlagCheck();
         }
 
         return CommandResult.Ok;
@@ -191,6 +219,7 @@ public sealed class GameSession
                 WhiteSeated = _whiteToken is not null,
                 BlackSeated = _blackToken is not null,
                 DrawOfferedBy = _drawOfferedBy,
+                Clock = _clock.Snapshot(),
             };
 
             if (view.IsYourTurn)
@@ -206,9 +235,79 @@ public sealed class GameSession
         }
     }
 
+    /// <summary>Ends the game if the side to move has run out of time. Returns true if it did.</summary>
+    public bool CheckFlag()
+    {
+        lock (_gate)
+        {
+            if (!CheckFlagUnsafe())
+            {
+                return false;
+            }
+        }
+
+        RaiseChanged();
+        return true;
+    }
+
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            _flagTimer?.Dispose();
+            _flagTimer = null;
+        }
+    }
+
+    private bool CheckFlagUnsafe()
+    {
+        if (_outcome is not null || _clock.Active is not { } active || !_clock.IsFlagged(active))
+        {
+            return false;
+        }
+
+        FinishOnTime(FromClock(active));
+        return true;
+    }
+
+    private void OnFlagTimer()
+    {
+        bool flagged;
+        lock (_gate)
+        {
+            flagged = CheckFlagUnsafe();
+            if (!flagged && _outcome is null)
+            {
+                ScheduleFlagCheck(); // Fired early (timer granularity); try again.
+            }
+        }
+
+        if (flagged)
+        {
+            RaiseChanged();
+        }
+    }
+
+    private void ScheduleFlagCheck()
+    {
+        _flagTimer?.Dispose();
+        _flagTimer = _clock.TimeUntilFlag() is { } due
+            ? _time.CreateTimer(_ => OnFlagTimer(), null, due + TimeSpan.FromMilliseconds(1), Timeout.InfiniteTimeSpan)
+            : null;
+    }
+
+    private void FinishOnTime(Color flagged)
+    {
+        var winner = flagged.Opponent();
+        Finish(Outcomes.CanEverMate(_state, winner)
+            ? GameOutcome.WinFor(winner, OutcomeReason.Timeout)
+            : GameOutcome.Draw(OutcomeReason.TimeoutVsInsufficientMaterial));
+    }
+
     private CommandResult Mutate(string? token, Func<Color, CommandResult> command)
     {
         CommandResult result;
+        bool changed;
         lock (_gate)
         {
             var color = SeatOfUnsafe(token) switch
@@ -223,16 +322,22 @@ public sealed class GameSession
                 return CommandResult.Fail("Spectators cannot play.");
             }
 
+            var outcomeBefore = _outcome;
             result = command(color.Value);
-            if (!result.Succeeded)
-            {
-                return result;
-            }
 
-            LastActivity = _time.GetUtcNow();
+            // A failed command can still end the game (e.g. moving after the flag fell).
+            changed = result.Succeeded || !Equals(outcomeBefore, _outcome);
+            if (result.Succeeded)
+            {
+                LastActivity = _time.GetUtcNow();
+            }
         }
 
-        RaiseChanged();
+        if (changed)
+        {
+            RaiseChanged();
+        }
+
         return result;
     }
 
@@ -240,7 +345,14 @@ public sealed class GameSession
     {
         _outcome = outcome;
         _drawOfferedBy = null;
+        _clock.Stop();
+        _flagTimer?.Dispose();
+        _flagTimer = null;
     }
+
+    private static ClockSide ToClock(Color color) => color == Color.White ? ClockSide.White : ClockSide.Black;
+
+    private static Color FromClock(ClockSide side) => side == ClockSide.White ? Color.White : Color.Black;
 
     private string ClaimUnsafe(Seat seat)
     {
