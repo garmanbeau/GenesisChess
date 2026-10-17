@@ -7,7 +7,31 @@ public static class MoveGenerator
         [PieceType.Queen, PieceType.Rook, PieceType.Bishop, PieceType.Knight];
 
     public static IEnumerable<GameAction> LegalActions(GameState state) =>
-        LegalMoves(state).Cast<GameAction>();
+        LegalMoves(state).Cast<GameAction>().Concat(LegalPlacements(state));
+
+    /// <summary>
+    /// Placements from the reserve: any empty square on the mover's own half, pawns never on
+    /// the mover's back rank, and never leaving the mover's king in check.
+    /// </summary>
+    public static IEnumerable<PlaceAction> LegalPlacements(GameState state) =>
+        state.ReserveOf(state.SideToMove).Available.SelectMany(type => LegalPlacements(state, type));
+
+    public static IEnumerable<PlaceAction> LegalPlacements(GameState state, PieceType type)
+    {
+        var color = state.SideToMove;
+        if (state.ReserveOf(color).Count(type) == 0)
+        {
+            yield break;
+        }
+
+        foreach (var square in Square.All)
+        {
+            if (Rules.PlacementError(state, type, square) is null)
+            {
+                yield return new PlaceAction(type, square);
+            }
+        }
+    }
 
     public static IEnumerable<MoveAction> LegalMoves(GameState state) =>
         PseudoLegalMoves(state).Where(m => !Attacks.IsInCheck(Rules.BoardAfter(state, m), state.SideToMove));

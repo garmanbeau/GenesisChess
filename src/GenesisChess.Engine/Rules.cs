@@ -6,8 +6,67 @@ public static class Rules
     public static ActionResult Apply(GameState state, GameAction action) => action switch
     {
         MoveAction move => ApplyMove(state, move),
+        PlaceAction place => ApplyPlacement(state, place),
         _ => ActionResult.Failure($"Unsupported action '{action}'."),
     };
+
+    private static ActionResult ApplyPlacement(GameState state, PlaceAction place)
+    {
+        if (PlacementError(state, place.Type, place.Square) is { } error)
+        {
+            return ActionResult.Failure(error);
+        }
+
+        var color = state.SideToMove;
+        var next = state.WithReserve(color, state.ReserveOf(color).Remove(place.Type)) with
+        {
+            Board = BoardAfter(state, place),
+            EnPassantTarget = null,
+            HalfmoveClock = 0,
+        };
+
+        return ActionResult.Success(EndTurn(next));
+    }
+
+    /// <summary>Why placing <paramref name="type"/> on <paramref name="square"/> is illegal, or null if it is legal.</summary>
+    internal static string? PlacementError(GameState state, PieceType type, Square square)
+    {
+        var color = state.SideToMove;
+        if (type == PieceType.King)
+        {
+            return "Kings cannot be placed.";
+        }
+
+        if (state.ReserveOf(color).Count(type) == 0)
+        {
+            return $"No {type} left in reserve.";
+        }
+
+        if (!state.Board.IsEmpty(square))
+        {
+            return $"{square} is occupied.";
+        }
+
+        if (!color.IsOwnHalf(square.Rank))
+        {
+            return "Pieces can only be placed on your own half of the board.";
+        }
+
+        if (type == PieceType.Pawn && square.Rank == color.BackRank())
+        {
+            return "Pawns cannot be placed on your back rank.";
+        }
+
+        if (Attacks.IsInCheck(BoardAfter(state, new PlaceAction(type, square)), color))
+        {
+            return "That placement leaves your king in check.";
+        }
+
+        return null;
+    }
+
+    internal static Board BoardAfter(GameState state, PlaceAction place) =>
+        state.Board.With((place.Square, new Piece(place.Type, state.SideToMove)));
 
     private static ActionResult ApplyMove(GameState state, MoveAction move)
     {
