@@ -1,0 +1,50 @@
+.backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+}
+
+.dialog {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.9rem;
+}
+
+.choices {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.choice {
+    width: 4rem;
+    height: 4rem;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--square-light);
+    cursor: pointer;
+}
+
+.choice:hover {
+    outline: 2px solid var(--accent);
+}
+
+.piece {
+    font-size: 2.8rem;
+    line-height: 1;
+    font-family: "Segoe UI Symbol", "DejaVu Sans", "Noto Sans Symbols 2", "Apple Symbols", serif;
+}
+
+.piece-white {
+    color: #fbfaf7;
+    -webkit-text-stroke: 0.06em #2a2620;
+    paint-order: stroke fill;
+}
+
+.piece-black {
+    color: #1c1a17;
+}

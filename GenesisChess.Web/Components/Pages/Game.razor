@@ -1,0 +1,347 @@
+@page "/game/{Id}"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@implements IDisposable
+@inject GameService Games
+@inject PlayerTokenStore Tokens
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Genesis Chess · @Id</PageTitle>
+
+@if (!_loaded)
+{
+    <p class="muted">Loading game…</p>
+}
+else if (_session is null || _view is null)
+{
+    <div class="card not-found">
+        <h1>Game not found</h1>
+        <p class="muted">This game doesn't exist or has expired.</p>
+        <a class="btn btn-primary" href="/">Start a new game</a>
+    </div>
+}
+else
+{
+    var view = _view;
+    var orientation = view.SeatColor ?? Color.White;
+    var top = orientation.Opponent();
+
+    <div class="game">
+        <section class="board-col">
+            <div class="player-strip">
+                <div class="who">
+                    <span class="swatch @PieceGlyph.CssClass(top)"></span>
+                    <span class="name">@top</span>
+                    @if (!Seated(view, top))
+                    {
+                        <span class="muted">· waiting to join</span>
+                    }
+                </div>
+                <ReserveTray Reserve="view.State.ReserveOf(top)" Color="top" />
+                @if (view.Clock is { IsUntimed: false } topClock)
+                {
+                    <ClockDisplay Snapshot="topClock" Side="ToClockSide(top)" />
+                }
+            </div>
+
+            <Board State="view.State"
+                   Orientation="orientation"
+                   Interactive="view.IsYourTurn"
+                   Selected="_selected"
+                   Targets="Targets"
+                   LastAction="LastActionSquares"
+                   CheckedKing="view.InCheck ? view.State.Board.FindKing(view.State.SideToMove) : null"
+                   PlacementZone="_selectedReserve is null ? null : orientation"
+                   OnSquareClick="OnSquareClickAsync" />
+
+            <div class="player-strip">
+                <div class="who">
+                    <span class="swatch @PieceGlyph.CssClass(orientation)"></span>
+                    <span class="name">@orientation</span>
+                    @if (view.Seat != Seat.Spectator)
+                    {
+                        <span class="muted">· you</span>
+                    }
+                </div>
+                <ReserveTray Reserve="view.State.ReserveOf(orientation)"
+                             Color="orientation"
+                             Interactive="view.IsYourTurn"
+                             Placeable="PlaceableTypes"
+                             Selected="_selectedReserve"
+                             OnSelect="SelectReserve" />
+                @if (view.Clock is { IsUntimed: false } bottomClock)
+                {
+                    <ClockDisplay Snapshot="bottomClock" Side="ToClockSide(orientation)" />
+                }
+            </div>
+        </section>
+
+        <aside class="side">
+            <div class="card status @(view.IsYourTurn ? "your-turn" : null)" role="status">
+                <strong>@StatusText(view)</strong>
+                <span class="muted tc">@view.TimeControl.Category · @view.TimeControl</span>
+                @if (_error is not null)
+                {
+                    <p class="error-text">@_error</p>
+                }
+                @if (_selectedReserve is { } chosen)
+                {
+                    <p class="hint">Placing a @chosen. Tap a highlighted square on your half.</p>
+                }
+            </div>
+
+            @if (view.Status == GameStatus.WaitingForOpponent || view.Seat == Seat.Spectator)
+            {
+                <div class="card invite">
+                    <h2 class="panel-title">@(view.Seat == Seat.Spectator ? "Spectating" : "Invite a friend")</h2>
+                    @if (view.Seat != Seat.Spectator)
+                    {
+                        <p class="muted">Send this link. The first person to open it plays @(orientation.Opponent()).</p>
+                    }
+                    <div class="invite-row">
+                        <input type="text" readonly value="@InviteLink" aria-label="Invite link" @ref="_inviteInput" />
+                        <button class="btn btn-primary" @onclick="CopyInviteAsync">@(_copied ? "Copied!" : "Copy")</button>
+                    </div>
+                </div>
+            }
+
+            @if (view.Status == GameStatus.InProgress && view.Seat != Seat.Spectator)
+            {
+                <div class="card actions">
+                    @if (view.DrawOfferedBy == orientation.Opponent())
+                    {
+                        <p class="offer"><strong>@view.DrawOfferedBy offers a draw.</strong></p>
+                        <div class="action-row">
+                            <button class="btn btn-primary" @onclick="() => Run(s => s.OfferDraw(_token))">Accept draw</button>
+                            <button class="btn" @onclick="() => Run(s => s.DeclineDraw(_token))">Decline</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="action-row">
+                            <button class="btn" disabled="@(view.DrawOfferedBy == orientation)" @onclick="() => Run(s => s.OfferDraw(_token))">
+                                @(view.DrawOfferedBy == orientation ? "Draw offered" : "Offer draw")
+                            </button>
+                            @if (_confirmResign)
+                            {
+                                <button class="btn btn-danger" @onclick="() => Run(s => s.Resign(_token))">Confirm resign</button>
+                                <button class="btn" @onclick="() => _confirmResign = false">Cancel</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-danger" @onclick="() => _confirmResign = true">Resign</button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (view.Status == GameStatus.Finished)
+            {
+                <div class="card actions">
+                    <a class="btn btn-primary" href="/">New game</a>
+                </div>
+            }
+
+            <div class="card">
+                <h2 class="panel-title">Moves</h2>
+                <MoveList Moves="view.Moves" />
+            </div>
+        </aside>
+    </div>
+
+    @if (_pendingPromotion is { } promotion)
+    {
+        <PromotionDialog Color="orientation"
+                         OnChoose="type => SubmitAsync(promotion with { Promotion = type })"
+                         OnCancel="() => _pendingPromotion = null" />
+    }
+}
+
+@code {
+    private GameSession? _session;
+    private GameView? _view;
+    private string? _token;
+    private bool _loaded;
+    private string? _error;
+    private Square? _selected;
+    private PieceType? _selectedReserve;
+    private MoveAction? _pendingPromotion;
+    private bool _copied;
+    private bool _confirmResign;
+    private ElementReference _inviteInput;
+
+    [Parameter]
+    public string Id { get; set; } = string.Empty;
+
+    private string InviteLink => $"{Navigation.BaseUri}game/{Id}";
+
+    private IReadOnlySet<Square> Targets =>
+        _view is null ? new HashSet<Square>()
+        : _selectedReserve is { } type ? _view.LegalPlacements.Where(p => p.Type == type).Select(p => p.Square).ToHashSet()
+        : _selected is { } from ? _view.LegalMoves.Where(m => m.From == from).Select(m => m.To).ToHashSet()
+        : new HashSet<Square>();
+
+    private IReadOnlySet<PieceType> PlaceableTypes =>
+        _view?.LegalPlacements.Select(p => p.Type).ToHashSet() ?? [];
+
+    private IReadOnlySet<Square> LastActionSquares => _view?.LastAction switch
+    {
+        MoveAction m => new HashSet<Square> { m.From, m.To },
+        PlaceAction p => new HashSet<Square> { p.Square },
+        _ => new HashSet<Square>(),
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Unsubscribe();
+        _session = Games.Find(Id);
+        if (_session is not null)
+        {
+            _session.Changed += OnSessionChanged;
+            var stored = await Tokens.GetAsync(Id);
+            var joined = _session.Join(stored);
+            if (joined.Token is not null && joined.Token != stored)
+            {
+                await Tokens.SetAsync(Id, joined.Token);
+            }
+
+            _token = joined.Token;
+            Refresh();
+        }
+
+        _loaded = true;
+    }
+
+    private void Refresh()
+    {
+        _view = _session?.GetView(_token);
+        if (_view is not { IsYourTurn: true })
+        {
+            _selected = null;
+            _selectedReserve = null;
+            _pendingPromotion = null;
+        }
+
+        if (_view?.Status != GameStatus.InProgress)
+        {
+            _confirmResign = false;
+        }
+    }
+
+    /// <summary>Raised on whichever thread changed the session; marshal onto this circuit.</summary>
+    private void OnSessionChanged(GameSession session) => _ = InvokeAsync(() =>
+    {
+        Refresh();
+        StateHasChanged();
+    });
+
+    private void Run(Func<GameSession, CommandResult> command)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        var result = command(_session);
+        _error = result.Succeeded ? null : result.Error;
+        _confirmResign = false;
+        Refresh();
+    }
+
+    private async Task CopyInviteAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", InviteLink);
+            _copied = true;
+        }
+        catch (JSException)
+        {
+            // Clipboard needs a secure context (HTTPS or localhost); select the text so it can be copied by hand.
+            await JS.InvokeVoidAsync("genesisChess.select", _inviteInput);
+        }
+    }
+
+    private void Unsubscribe()
+    {
+        if (_session is not null)
+        {
+            _session.Changed -= OnSessionChanged;
+        }
+    }
+
+    public void Dispose() => Unsubscribe();
+
+    private static ClockSide ToClockSide(Color color) => color == Color.White ? ClockSide.White : ClockSide.Black;
+
+    private static bool Seated(GameView view, Color color) => color == Color.White ? view.WhiteSeated : view.BlackSeated;
+
+    private static string StatusText(GameView view) => view.Status switch
+    {
+        GameStatus.Finished => view.Outcome!.ToString(),
+        GameStatus.WaitingForOpponent => "Waiting for your opponent to join…",
+        _ when view.IsYourTurn => view.InCheck ? "Your turn. You're in check!" : "Your turn",
+        _ when view.Seat == Seat.Spectator => $"{view.State.SideToMove} to play",
+        _ => "Opponent's turn",
+    };
+
+    private void SelectReserve(PieceType type)
+    {
+        _error = null;
+        _selected = null;
+        _selectedReserve = _selectedReserve == type ? null : type;
+    }
+
+    private async Task OnSquareClickAsync(Square square)
+    {
+        if (_view is not { IsYourTurn: true } view)
+        {
+            return;
+        }
+
+        _error = null;
+
+        if (_selectedReserve is { } type)
+        {
+            if (view.LegalPlacements.Contains(new PlaceAction(type, square)))
+            {
+                await SubmitAsync(new PlaceAction(type, square));
+                return;
+            }
+
+            _selectedReserve = null;
+        }
+
+        if (_selected is { } from)
+        {
+            var moves = view.LegalMoves.Where(m => m.From == from && m.To == square).ToList();
+            if (moves.Count > 1)
+            {
+                _pendingPromotion = moves[0] with { Promotion = null };
+                return;
+            }
+
+            if (moves.Count == 1)
+            {
+                await SubmitAsync(moves[0]);
+                return;
+            }
+        }
+
+        var piece = view.State.Board[square];
+        _selected = piece is { } p && p.Color == view.SeatColor && square != _selected ? square : null;
+    }
+
+    private Task SubmitAsync(GameAction action)
+    {
+        _pendingPromotion = null;
+        _selected = null;
+        _selectedReserve = null;
+
+        var result = _session!.Submit(_token, action);
+        _error = result.Succeeded ? null : result.Error;
+        Refresh();
+        return Task.CompletedTask;
+    }
+}

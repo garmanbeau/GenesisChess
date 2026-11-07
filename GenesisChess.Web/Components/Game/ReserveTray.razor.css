@@ -1,0 +1,82 @@
+.tray {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    min-height: 2.9rem;
+    align-items: center;
+}
+
+.empty {
+    font-size: 0.85rem;
+}
+
+.slot {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    padding: 0;
+    cursor: pointer;
+}
+
+.slot:disabled {
+    cursor: default;
+}
+
+.interactive .slot:not(:disabled):hover {
+    border-color: var(--accent);
+}
+
+.slot.selected {
+    border-color: var(--accent);
+    outline: 2px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 25%, var(--surface-2));
+}
+
+.tray.interactive .slot.inert {
+    opacity: 0.45;
+}
+
+.piece {
+    font-size: 1.9rem;
+    line-height: 1;
+    font-family: "Segoe UI Symbol", "DejaVu Sans", "Noto Sans Symbols 2", "Apple Symbols", serif;
+}
+
+.piece-white {
+    color: #fbfaf7;
+    -webkit-text-stroke: 0.06em #2a2620;
+    paint-order: stroke fill;
+}
+
+.piece-black {
+    color: #1c1a17;
+}
+
+@media (prefers-color-scheme: dark) {
+    .piece-black {
+        -webkit-text-stroke: 0.05em #8d867a;
+        paint-order: stroke fill;
+    }
+}
+
+.count {
+    position: absolute;
+    right: -0.3rem;
+    bottom: -0.3rem;
+    min-width: 1.2rem;
+    height: 1.2rem;
+    padding: 0 0.25rem;
+    border-radius: 999px;
+    background: var(--text);
+    color: var(--bg);
+    font-size: 0.72rem;
+    font-weight: 700;
+    line-height: 1.2rem;
+    text-align: center;
+}

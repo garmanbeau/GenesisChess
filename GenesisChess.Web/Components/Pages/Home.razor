@@ -1,0 +1,101 @@
+﻿@page "/"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject GameService Games
+@inject PlayerTokenStore Tokens
+@inject NavigationManager Navigation
+
+<PageTitle>Genesis Chess</PageTitle>
+
+<div class="home">
+    <section class="intro">
+        <h1>Genesis Chess</h1>
+        <p>
+            Both sides begin with only a king. Every other piece waits in reserve. On your turn, either
+            <strong>move</strong> a piece on the board or <strong>place</strong> one from your reserve on
+            any empty square of your own half.
+        </p>
+        <ul class="rules">
+            <li>Pawns can't be placed on your back rank and double-step only from their usual starting rank.</li>
+            <li>Placing a piece can block a check, give check, or even deliver mate.</li>
+            <li>A rook placed on its corner can castle, as long as neither it nor the king has moved.</li>
+            <li>Stalemate only happens when you have no legal move <em>and</em> no legal placement.</li>
+        </ul>
+    </section>
+
+    <section class="card new-game">
+        <h2>New game</h2>
+
+        <h3 class="label">Time control</h3>
+        <TimeControlPicker @bind-Value="_timeControl" />
+
+        <h3 class="label">Play as</h3>
+        <div class="color-choice" role="radiogroup" aria-label="Your color">
+            @foreach (var choice in Enum.GetValues<ColorChoice>())
+            {
+                <button type="button" role="radio" aria-checked="@(choice == _color)"
+                        class="color-option @(choice == _color ? "selected" : null)" @onclick="() => _color = choice">
+                    <span class="color-glyph" aria-hidden="true">@Glyph(choice)</span>
+                    @choice
+                </button>
+            }
+        </div>
+
+        <button class="btn btn-primary btn-lg create" @onclick="CreateAsync" disabled="@_creating">
+            Create game &amp; get invite link
+        </button>
+    </section>
+
+    <section class="card join">
+        <h2>Join a game</h2>
+        <p class="muted">Paste an invite link or game code.</p>
+        <form class="join-form" @onsubmit="Join">
+            <input type="text" @bind="_joinCode" placeholder="https://…/game/abc123 or abc123" aria-label="Invite link or code" />
+            <button class="btn" type="submit">Join</button>
+        </form>
+        @if (_joinError is not null)
+        {
+            <p class="error-text">@_joinError</p>
+        }
+    </section>
+</div>
+
+@code {
+    private TimeControl _timeControl = TimeControl.FromMinutes(5, 3);
+    private ColorChoice _color = ColorChoice.Random;
+    private bool _creating;
+    private string? _joinCode;
+    private string? _joinError;
+
+    private static string Glyph(ColorChoice choice) => choice switch
+    {
+        ColorChoice.White => "♔",
+        ColorChoice.Black => "♚",
+        _ => "⚄",
+    };
+
+    private async Task CreateAsync()
+    {
+        _creating = true;
+        var created = Games.CreateGame(_timeControl, _color);
+        await Tokens.SetAsync(created.Session.Id, created.Token);
+        Navigation.NavigateTo($"game/{created.Session.Id}");
+    }
+
+    private void Join()
+    {
+        var code = (_joinCode ?? string.Empty).Trim().TrimEnd('/');
+        var slash = code.LastIndexOf('/');
+        if (slash >= 0)
+        {
+            code = code[(slash + 1)..];
+        }
+
+        if (Games.Find(code) is null)
+        {
+            _joinError = "No game found with that link or code.";
+            return;
+        }
+
+        Navigation.NavigateTo($"game/{code}");
+    }
+}

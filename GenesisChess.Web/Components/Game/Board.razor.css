@@ -1,0 +1,136 @@
+.board {
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    container-type: inline-size;
+    user-select: none;
+}
+
+.sq {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    margin: 0;
+    font: inherit;
+    cursor: default;
+}
+
+.interactive .sq {
+    cursor: pointer;
+}
+
+.light {
+    background: var(--square-light);
+}
+
+.dark {
+    background: var(--square-dark);
+}
+
+.sq.last::before,
+.sq.selected::before,
+.sq.zone::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.sq.zone::before {
+    background: rgba(47, 111, 79, 0.12);
+}
+
+.sq.last::before {
+    background: var(--highlight-last);
+}
+
+.sq.selected::before {
+    background: var(--highlight-select);
+}
+
+.sq.check {
+    background-image: var(--check);
+}
+
+.piece {
+    position: relative;
+    z-index: 1;
+    font-size: 10.5cqi;
+    line-height: 1;
+    font-family: "Segoe UI Symbol", "DejaVu Sans", "Noto Sans Symbols 2", "Apple Symbols", serif;
+    pointer-events: none;
+}
+
+.piece-white {
+    color: #fbfaf7;
+    -webkit-text-stroke: 0.06em #2a2620;
+    paint-order: stroke fill;
+    text-shadow: 0 0.03em 0.05em rgba(0, 0, 0, 0.35);
+}
+
+.piece-black {
+    color: #1c1a17;
+    -webkit-text-stroke: 0.03em #1c1a17;
+    text-shadow: 0 0.03em 0.05em rgba(255, 255, 255, 0.15);
+}
+
+.dot {
+    position: absolute;
+    width: 30%;
+    height: 30%;
+    border-radius: 50%;
+    background: var(--target-dot);
+    z-index: 2;
+    pointer-events: none;
+}
+
+.ring {
+    position: absolute;
+    inset: 4%;
+    border-radius: 50%;
+    border: 0.6cqi solid var(--target-dot);
+    z-index: 2;
+    pointer-events: none;
+}
+
+.interactive .sq.target:hover::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.18);
+}
+
+.coord {
+    position: absolute;
+    font-size: 2.2cqi;
+    font-weight: 700;
+    opacity: 0.75;
+    pointer-events: none;
+    z-index: 3;
+}
+
+.light .coord {
+    color: var(--square-dark);
+}
+
+.dark .coord {
+    color: var(--square-light);
+}
+
+.rank-coord {
+    top: 3%;
+    left: 4%;
+}
+
+.file-coord {
+    bottom: 2%;
+    right: 5%;
+}

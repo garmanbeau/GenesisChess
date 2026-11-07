@@ -1,0 +1,45 @@
+.moves {
+    max-height: 18rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column-reverse; /* keeps the newest move in view */
+}
+
+.none {
+    margin: 0;
+}
+
+ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+li {
+    display: grid;
+    grid-template-columns: 2.4rem 1fr 1fr;
+    padding: 0.15rem 0.25rem;
+    border-radius: 4px;
+}
+
+li:nth-child(odd) {
+    background: var(--surface-2);
+}
+
+.num {
+    color: var(--muted);
+}
+
+.ply {
+    font-weight: 600;
+}
+
+.ply.drop {
+    color: var(--accent);
+}
+
+.ply.latest {
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+}
