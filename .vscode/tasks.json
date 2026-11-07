@@ -1,0 +1,37 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build (Release)",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/GenesisChess.Web/GenesisChess.Web.csproj", "-c", "Release"],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "build (Debug)",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/GenesisChess.Web/GenesisChess.Web.csproj", "-c", "Debug"],
+      "group": "build",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "test",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["test", "${workspaceFolder}/GenesisChess.slnx"],
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "run (no debugger)",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["run", "--project", "${workspaceFolder}/GenesisChess.Web", "-c", "Release", "--launch-profile", "http"],
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}
