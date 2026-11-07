@@ -1,0 +1,42 @@
+{
+  // F5 builds and starts the web app, then opens it in your browser.
+  // Requires the C# Dev Kit extension (see extensions.json).
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Genesis Chess",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build (Release)",
+      "program": "${workspaceFolder}/GenesisChess.Web/bin/Release/net10.0/GenesisChess.Web.dll",
+      "cwd": "${workspaceFolder}/GenesisChess.Web",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://localhost:5080"
+      },
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "\\bNow listening on:\\s+(https?://\\S+)"
+      },
+      "console": "internalConsole",
+      "justMyCode": false
+    },
+    {
+      "name": "Debug Genesis Chess",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build (Debug)",
+      "program": "${workspaceFolder}/GenesisChess.Web/bin/Debug/net10.0/GenesisChess.Web.dll",
+      "cwd": "${workspaceFolder}/GenesisChess.Web",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://localhost:5080"
+      },
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "\\bNow listening on:\\s+(https?://\\S+)"
+      },
+      "console": "internalConsole"
+    }
+  ]
+}
