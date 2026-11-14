@@ -1,32 +1,75 @@
 @* One side's clock. Counts down between server pushes and re-syncs on every new snapshot. *@
 @implements IDisposable
 @inject TimeProvider Time
+@inject IJSRuntime JS
 
-<div class="clock @(IsRunning ? "running" : null) @(IsLow ? "low" : null) @(_shown == "0:00.0" ? "flagged" : null)"
-     role="timer" aria-label="@($"{Side} clock {_shown}")">
-    @_shown
-</div>
+@if (WarnWithSound)
+{
+    <div class="clock-wrap">
+        <button type="button" class="sound-toggle" @onclick="ToggleSoundAsync"
+                aria-pressed="@(_soundOn ? "true" : "false")"
+                title="@(_soundOn ? "Low-time sound on (click to mute)" : "Low-time sound muted (click to unmute)")"
+                aria-label="@(_soundOn ? "Mute low-time sound" : "Unmute low-time sound")">
+            @(_soundOn ? "🔊" : "🔇")
+        </button>
+        @ClockFace
+    </div>
+}
+else
+{
+    @ClockFace
+}
 
 @code {
     private static readonly TimeSpan Tick = TimeSpan.FromMilliseconds(100);
     private ITimer? _timer;
     private string _shown = string.Empty;
+    private bool _low;
+    private bool _lowKnown;
+    private bool _soundOn = true;
 
     [Parameter, EditorRequired]
     public ClockSnapshot Snapshot { get; set; } = default!;
 
+    [Parameter, EditorRequired]
+    public TimeControl TimeControl { get; set; } = default!;
+
     [Parameter]
     public ClockSide Side { get; set; }
 
+    /// <summary>Play the low-time sound for this clock. Set only on the viewer's own clock.</summary>
+    [Parameter]
+    public bool WarnWithSound { get; set; }
+
     private bool IsRunning => Snapshot.Running == Side;
 
-    private bool IsLow => Remaining() < TimeSpan.FromSeconds(20);
+    private RenderFragment ClockFace => @<div class="clock @(IsRunning ? "running" : null) @(_low ? "low" : null) @(_shown == "0:00.0" ? "flagged" : null)"
+                                             role="timer" aria-label="@($"{Side} clock {_shown}")">
+        @_shown
+    </div>;
 
     protected override void OnParametersSet()
     {
-        _shown = Format(Remaining());
+        var remaining = Remaining();
+        _shown = Format(remaining);
+        UpdateLow(remaining);
         _timer?.Dispose();
         _timer = IsRunning ? Time.CreateTimer(_ => OnTick(), null, Tick, Tick) : null;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && WarnWithSound)
+        {
+            try
+            {
+                _soundOn = await JS.InvokeAsync<bool>("genesisChess.sound.isEnabled");
+                StateHasChanged();
+            }
+            catch (JSException)
+            {
+            }
+        }
     }
 
     private TimeSpan Remaining()
@@ -40,16 +83,66 @@
         return remaining < TimeSpan.Zero ? TimeSpan.Zero : remaining;
     }
 
-    private void OnTick()
+    /// <summary>
+    /// Tracks the low-time state and plays the warning once per crossing into it. The first
+    /// reading only records the state, so reopening a game already in low time stays silent.
+    /// An increment that lifts the clock back above the threshold re-arms the warning.
+    /// </summary>
+    /// <returns>True when the low-time state changed.</returns>
+    private bool UpdateLow(TimeSpan remaining)
     {
-        var text = Format(Remaining());
-        if (text == _shown)
+        var low = TimeControl.IsLowTime(remaining);
+        var crossed = _lowKnown && low && !_low;
+        var changed = low != _low;
+        _low = low;
+        _lowKnown = true;
+
+        if (crossed && IsRunning && WarnWithSound && _soundOn && remaining > TimeSpan.Zero)
         {
-            return; // Only push a render when the visible digits change.
+            _ = InvokeAsync(PlayWarningAsync);
         }
 
+        return changed;
+    }
+
+    private async Task PlayWarningAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("genesisChess.sound.lowTime");
+        }
+        catch (JSException)
+        {
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    }
+
+    private async Task ToggleSoundAsync()
+    {
+        _soundOn = !_soundOn;
+        try
+        {
+            await JS.InvokeVoidAsync("genesisChess.sound.setEnabled", _soundOn);
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    private void OnTick()
+    {
+        var remaining = Remaining();
+        var text = Format(remaining);
         _ = InvokeAsync(() =>
         {
+            var lowChanged = UpdateLow(remaining);
+            if (text == _shown && !lowChanged)
+            {
+                return; // Only push a render when the visible digits or the low state change.
+            }
+
             _shown = text;
             StateHasChanged();
         });
