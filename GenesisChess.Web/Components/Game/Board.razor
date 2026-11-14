@@ -1,5 +1,12 @@
-@* The 8x8 board. Purely presentational: the page decides what a click means. *@
+@* The 8x8 board. Game state is presentational: the page decides what a left-click means.
+   The board does own one piece of state: this viewer's right-click annotations (arrows and circles), held here
+   and driven by Board.razor.js. They are never sent to the game, and they are lost whenever this component is
+   recreated (it is keyed by game id in Game.razor), so don't re-key or recreate it casually. *@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject ILogger<Board> Logger
 
+<div class="board-wrap" @ref="_root" data-ply="@State.PositionHistory.Count" @oncontextmenu:preventDefault>
 <div class="board @(Orientation == Color.Black ? "flipped" : null) @(Interactive ? "interactive" : null)"
      role="grid" aria-label="Chess board">
     @foreach (var rank in Ranks)
@@ -12,7 +19,7 @@
             <button type="button"
                     class="@SquareClasses(square, piece, isTarget)"
                     aria-label="@Describe(square, piece)"
-                    @onclick="() => OnSquareClick.InvokeAsync(square)">
+                    @onclick="() => OnLeftClickAsync(square)">
                 @if (piece is { } p)
                 {
                     <span class="piece @PieceGlyph.CssClass(p.Color)" aria-hidden="true">@PieceGlyph.For(p.Type)</span>
@@ -33,8 +40,46 @@
         }
     }
 </div>
+<svg class="annotations" viewBox="0 0 8 8" aria-hidden="true">
+    <defs>
+        @foreach (var color in AnnotationColors)
+        {
+            <marker id="gc-ah-@color" class="ann-head ann-@color" viewBox="0 0 3 3" refX="0" refY="1.5"
+                    markerWidth="3" markerHeight="3" markerUnits="strokeWidth" orient="auto">
+                <path d="M0,0 L3,1.5 L0,3 z" />
+            </marker>
+        }
+    </defs>
+    @foreach (var circle in _circles)
+    {
+        <circle class="ann-circle ann-@circle.Value.Color" cx="@circle.Value.Cx" cy="@circle.Value.Cy" r="0.46" />
+    }
+    @foreach (var arrow in _arrows)
+    {
+        <polyline class="ann-arrow ann-@arrow.Value.Color" points="@arrow.Value.Points"
+                  marker-end="url(#gc-ah-@arrow.Value.Color)" />
+    }
+</svg>
+@* Owned by Board.razor.js: holds the arrow or circle being dragged. Blazor never renders children here. *@
+<svg class="annotations annotation-draft" viewBox="0 0 8 8" aria-hidden="true"></svg>
+</div>
 
 @code {
+    private static readonly string[] AnnotationColors = ["green", "red", "blue", "yellow"];
+
+    private ElementReference _root;
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _handle;
+    private DotNetObjectReference<Board>? _selfRef;
+    private int? _lastHistoryCount;
+    private Color _lastOrientation;
+    private bool _disposed;
+
+    // Overlay coordinates come from Board.razor.js, which owns all board-to-overlay geometry
+    // (square centres, orientation, arrow shapes) for both the drag preview and the result.
+    private readonly Dictionary<(Square From, Square To), (string Color, string Points)> _arrows = [];
+    private readonly Dictionary<Square, (string Color, string Cx, string Cy)> _circles = [];
+
     [Parameter, EditorRequired]
     public GameState State { get; set; } = default!;
 
@@ -97,6 +142,154 @@
         }
 
         return string.Join(' ', classes);
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Any move or placement (by either side) wipes the sketch, as in common chess UIs.
+        // Arrow points are in screen space, so a flip invalidates them too.
+        var count = State.PositionHistory.Count;
+        if (_lastHistoryCount is { } previous && (previous != count || _lastOrientation != Orientation))
+        {
+            ClearAnnotations();
+        }
+
+        _lastHistoryCount = count;
+        _lastOrientation = Orientation;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _selfRef = DotNetObjectReference.Create(this);
+        try
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Game/Board.razor.js");
+            if (!_disposed)
+            {
+                _handle = await _module.InvokeAsync<IJSObjectReference>("attach", _root, _selfRef);
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            return;
+        }
+        catch (Exception ex) when (ex is JSException or OperationCanceledException)
+        {
+            // Annotations are a nicety: if the module can't load, leave them off rather than crash the circuit.
+            Logger.LogWarning(ex, "Board annotations disabled: the annotation script failed to load.");
+            return;
+        }
+
+        // DisposeAsync may have run while we were awaiting; it could not release what did not exist yet.
+        if (_disposed)
+        {
+            await ReleaseJsAsync();
+        }
+    }
+
+    /// <summary>
+    /// Called from JS when a right-button press ends on the board. <paramref name="points"/> is the arrow polyline,
+    /// or "x,y" (the square's centre) for a circle;
+    /// <paramref name="ply"/> is the position (history count) the drag started on, so a drag that races a move is dropped.
+    /// </summary>
+    [JSInvokable]
+    public void Annotate(int fromFile, int fromRank, int toFile, int toRank, string color, string points, int ply)
+    {
+        if (ply != State.PositionHistory.Count || !AnnotationColors.Contains(color) || !InRange(fromFile) || !InRange(fromRank) || !InRange(toFile) || !InRange(toRank))
+        {
+            return;
+        }
+
+        if (points.Length > 200 || !points.All(c => char.IsAsciiDigit(c) || c is '.' or ',' or ' ' or '-'))
+        {
+            return;
+        }
+
+        var from = new Square(fromFile, fromRank);
+        var to = new Square(toFile, toRank);
+
+        // The same shape in the same colour removes it; in a different colour it is recoloured.
+        if (from == to)
+        {
+            if (points.Split(',') is not [var cx, var cy])
+            {
+                return;
+            }
+
+            if (_circles.TryGetValue(from, out var existing) && existing.Color == color)
+            {
+                _circles.Remove(from);
+            }
+            else
+            {
+                _circles[from] = (color, cx, cy);
+            }
+        }
+        else
+        {
+            if (_arrows.TryGetValue((from, to), out var existing) && existing.Color == color)
+            {
+                _arrows.Remove((from, to));
+            }
+            else
+            {
+                _arrows[(from, to)] = (color, points);
+            }
+        }
+
+        StateHasChanged();
+
+        static bool InRange(int v) => v is >= 0 and <= 7;
+    }
+
+    private Task OnLeftClickAsync(Square square)
+    {
+        ClearAnnotations();
+        return OnSquareClick.InvokeAsync(square);
+    }
+
+    private void ClearAnnotations()
+    {
+        _arrows.Clear();
+        _circles.Clear();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        await ReleaseJsAsync();
+        _selfRef?.Dispose();
+    }
+
+    private async Task ReleaseJsAsync()
+    {
+        var handle = _handle;
+        var module = _module;
+        _handle = null;
+        _module = null;
+        try
+        {
+            if (handle is not null)
+            {
+                await handle.InvokeVoidAsync("dispose");
+                await handle.DisposeAsync();
+            }
+
+            if (module is not null)
+            {
+                await module.DisposeAsync();
+            }
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or JSException or OperationCanceledException)
+        {
+            // The circuit is gone, the call was cancelled, or JS already dropped the handle:
+            // there is nothing left to clean up in the browser.
+        }
     }
 
     private static string Describe(Square square, Piece? piece) =>

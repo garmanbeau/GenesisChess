@@ -440,8 +440,8 @@ FodyWeavers.xsd
 Thumbs.db
 Desktop.ini
 
-# Claude Code personal settings (shared settings.json stays tracked)
-.claude/settings.local.json
+# Claude Code local files
+.claude/
 
 # ASP.NET Core data-protection keys, if ever persisted to the project folder
 DataProtection-Keys/

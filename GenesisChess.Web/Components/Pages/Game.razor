@@ -44,7 +44,9 @@ else
                 }
             </div>
 
-            <Board State="view.State"
+            @* Keyed by game so navigating to another game starts a fresh board (no stale annotations). *@
+            <Board @key="Id"
+                   State="view.State"
                    Orientation="orientation"
                    Interactive="view.IsYourTurn"
                    Selected="_selected"
