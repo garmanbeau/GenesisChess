@@ -179,3 +179,21 @@
 .board-wrap ::deep .ann-head.ann-red path { fill: #c4302b; }
 .board-wrap ::deep .ann-head.ann-blue path { fill: #1f5fbf; }
 .board-wrap ::deep .ann-head.ann-yellow path { fill: #d8a400; }
+
+/* Piece dragging (Board.razor.js). Only the mover's own pieces are .draggable, so touching any other
+   square still scrolls the page on phones. */
+.interactive .sq.draggable {
+    cursor: grab;
+    touch-action: none;
+    -webkit-touch-callout: none;
+}
+
+.drag-hover {
+    display: none;
+    position: absolute;
+    width: 12.5%;
+    height: 12.5%;
+    box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.8);
+    pointer-events: none;
+    z-index: 3;
+}

@@ -1,6 +1,6 @@
-// Right-click annotation input for the board.
-// The whole drag (hit-testing and the in-progress arrow) stays in the browser, so a drag
-// costs one call to .NET on release instead of one per mousemove.
+// Board input that stays in the browser: right-click annotations and left-button/touch piece dragging.
+// Hit-testing and the in-progress arrow or ghost piece live here, so a drag costs a call or two
+// to .NET instead of one per pointer move.
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -47,10 +47,190 @@ function arrowPoints(a, b) {
     return points.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`).join(" ");
 }
 
+// ---------------------------------------------------------------------------------------------
+// Left-button / touch piece dragging, shared by the board and the reserve tray (ReserveTray.razor.js).
+// The ghost, hit-testing and drop-square outline all live here; .NET hears about a drag twice:
+// once when it starts (to select the piece and show its legal targets) and once on release.
+// .NET validates every drop against the legal moves, so a bad drop can never become a move.
+// ---------------------------------------------------------------------------------------------
+
+/** Pixels the pointer must travel before a press becomes a drag; anything less is a click/tap. */
+const DRAG_THRESHOLD = { mouse: 4, pen: 4, touch: 8 };
+
+/** The board grid on the page (there is only ever one). */
+export function findBoard() {
+    return document.querySelector(".board-wrap .board");
+}
+
+function boardSquareAt(board, clientX, clientY) {
+    return hitTest(board, board.classList.contains("flipped"), clientX, clientY);
+}
+
+/** Viewport rectangle of a square on the board. */
+function squareRect(board, sq) {
+    const r = board.getBoundingClientRect();
+    const flipped = board.classList.contains("flipped");
+    const col = flipped ? 7 - sq.file : sq.file;
+    const row = flipped ? sq.rank : 7 - sq.rank;
+    const size = r.width / 8;
+    return { left: r.left + col * size, top: r.top + row * size, size };
+}
+
+/** Swallows the click the browser fires right after a drag ends, so a drag is never also a click. */
+function swallowNextClick() {
+    const swallow = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+    };
+    window.addEventListener("click", swallow, { capture: true, once: true });
+    setTimeout(() => window.removeEventListener("click", swallow, { capture: true }), 0);
+}
+
+/**
+ * Follows one press that may turn into a piece drag.
+ * - glyph: the piece element being dragged (cloned for the ghost, dimmed in place while dragging).
+ * - onStart(): called once the press passes the drag threshold.
+ * - onDrop(square): called on release over a board square ({ file, rank }); may return a promise, during which
+ *   the ghost waits on the square so the piece doesn't flash back before the move renders. Return null to snap back.
+ * - onEnd(): called when tracking stops, however it stops.
+ * Returns { cancel() }.
+ */
+export function trackPieceDrag(down, { glyph, onStart, onDrop, onEnd }) {
+    const pointerId = down.pointerId;
+    const touch = down.pointerType === "touch";
+    const threshold = DRAG_THRESHOLD[down.pointerType] ?? 4;
+    let board = null;
+    let ghost = null;
+    let hover = null;
+    let size = 0;
+    let finished = false;
+
+    const place = (x, y) => {
+        // On touch the piece rides above the finger so it stays visible; the drop square is still under the finger.
+        const lift = touch ? size * 0.6 : 0;
+        ghost.style.transform = `translate(${x - size / 2}px, ${y - size / 2 - lift}px)${touch ? " scale(1.5)" : ""}`;
+    };
+
+    const showHover = (sq) => {
+        if (!hover) return;
+        if (!sq) {
+            hover.style.display = "none";
+            return;
+        }
+
+        const flipped = board.classList.contains("flipped");
+        hover.style.left = `${(flipped ? 7 - sq.file : sq.file) * 12.5}%`;
+        hover.style.top = `${(flipped ? sq.rank : 7 - sq.rank) * 12.5}%`;
+        hover.style.display = "block";
+    };
+
+    const begin = () => {
+        board = findBoard();
+        if (!board) return false;
+        size = board.getBoundingClientRect().width / 8;
+        hover = board.parentElement.querySelector(".drag-hover");
+        ghost = glyph.cloneNode(true);
+        Object.assign(ghost.style, {
+            position: "fixed",
+            left: "0",
+            top: "0",
+            width: `${size}px`,
+            height: `${size}px`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: `${size * 0.84}px`,
+            lineHeight: "1",
+            pointerEvents: "none",
+            zIndex: "1000",
+            transformOrigin: "50% 50%",
+            willChange: "transform",
+        });
+        document.body.appendChild(ghost);
+        glyph.style.opacity = "0.3";
+        onStart();
+        return true;
+    };
+
+    const cleanup = () => {
+        ghost?.remove();
+        ghost = null;
+        showHover(null);
+        glyph.style.opacity = "";
+    };
+
+    const stopListening = () => {
+        if (finished) return;
+        finished = true;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onInterrupt);
+        window.removeEventListener("blur", onInterrupt);
+        onEnd?.();
+    };
+
+    function cancel() {
+        stopListening();
+        cleanup();
+    }
+
+    // pointercancel (the browser took the gesture over) or blur; other fingers are not ours to end.
+    function onInterrupt(e) {
+        if (e.pointerId === undefined || e.pointerId === pointerId) cancel();
+    }
+
+    function onMove(e) {
+        if (e.pointerId !== pointerId) return;
+        // The button was released somewhere we never heard about (outside the window, devtools...).
+        if (e.pointerType === "mouse" && (e.buttons & 1) === 0) {
+            cancel();
+            return;
+        }
+
+        if (!ghost) {
+            if (Math.hypot(e.clientX - down.clientX, e.clientY - down.clientY) < threshold) return;
+            if (!begin()) {
+                cancel();
+                return;
+            }
+        }
+
+        e.preventDefault();
+        place(e.clientX, e.clientY);
+        showHover(boardSquareAt(board, e.clientX, e.clientY));
+    }
+
+    function onUp(e) {
+        if (e.pointerId !== pointerId) return;
+        stopListening();
+        if (!ghost) return; // Never became a drag: let the click through.
+
+        swallowNextClick();
+        showHover(null);
+        const sq = boardSquareAt(board, e.clientX, e.clientY);
+        const pending = sq ? onDrop(sq) : null;
+        if (!pending) {
+            cleanup();
+            return;
+        }
+
+        const rect = squareRect(board, sq);
+        ghost.style.transform = `translate(${rect.left}px, ${rect.top}px)`;
+        pending.finally(cleanup);
+    }
+
+    window.addEventListener("pointermove", onMove, { passive: false });
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onInterrupt);
+    window.addEventListener("blur", onInterrupt);
+    return { cancel };
+}
+
 export function attach(root, dotNet) {
     const grid = root.querySelector(".board");
     const draft = root.querySelector("svg.annotation-draft");
     let drag = null;
+    let pieceDrag = null;
 
     const flipped = () => grid.classList.contains("flipped");
 
@@ -136,13 +316,36 @@ export function attach(root, dotNet) {
         window.addEventListener("blur", cancel);
     };
 
+    // Left-button / touch drag of one of the mover's pieces. Board.razor marks those squares .draggable.
+    const onPieceDown = (e) => {
+        if (e.button !== 0 || !e.isPrimary || pieceDrag) return;
+        const square = e.target.closest(".sq.draggable");
+        const glyph = square?.querySelector(".piece");
+        const from = glyph && hitTest(grid, flipped(), e.clientX, e.clientY);
+        if (!from) return;
+
+        // The position the drag started on; .NET ignores a drop that races a move.
+        const ply = Number(root.dataset.ply);
+        pieceDrag = trackPieceDrag(e, {
+            glyph,
+            onStart: () => dotNet.invokeMethodAsync("PieceDragStart", from.file, from.rank, ply).catch(() => { }),
+            onDrop: (to) => to.file === from.file && to.rank === from.rank
+                ? null
+                : dotNet.invokeMethodAsync("PieceDrop", from.file, from.rank, to.file, to.rank, ply).catch(() => { }),
+            onEnd: () => { pieceDrag = null; },
+        });
+    };
+
     // The context menu itself is suppressed by @oncontextmenu:preventDefault in Board.razor.
     root.addEventListener("mousedown", onDown);
+    grid.addEventListener("pointerdown", onPieceDown);
 
     return {
         dispose() {
             cancel();
+            pieceDrag?.cancel();
             root.removeEventListener("mousedown", onDown);
+            grid.removeEventListener("pointerdown", onPieceDown);
         },
     };
 }

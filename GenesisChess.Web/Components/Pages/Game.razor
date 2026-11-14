@@ -54,7 +54,9 @@ else
                    LastAction="LastActionSquares"
                    CheckedKing="view.InCheck ? view.State.Board.FindKing(view.State.SideToMove) : null"
                    PlacementZone="_selectedReserve is null ? null : orientation"
-                   OnSquareClick="OnSquareClickAsync" />
+                   OnSquareClick="OnSquareClickAsync"
+                   OnPieceDragStart="OnPieceDragStart"
+                   OnPieceDrop="OnPieceDropAsync" />
 
             <div class="player-strip">
                 <div class="who">
@@ -70,7 +72,9 @@ else
                              Interactive="view.IsYourTurn"
                              Placeable="PlaceableTypes"
                              Selected="_selectedReserve"
-                             OnSelect="SelectReserve" />
+                             OnSelect="SelectReserve"
+                             OnDragStart="OnReserveDragStart"
+                             OnDrop="OnReserveDropAsync" />
                 @if (view.Clock is { IsUntimed: false } bottomClock)
                 {
                     <ClockDisplay Snapshot="bottomClock" Side="ToClockSide(orientation)" />
@@ -333,6 +337,61 @@ else
 
         var piece = view.State.Board[square];
         _selected = piece is { } p && p.Color == view.SeatColor && square != _selected ? square : null;
+    }
+
+    // Drag and drop. A drag start selects (so targets show while dragging); a drop is checked against the
+    // legal moves here, so an illegal drop never reaches the session and just leaves the piece selected.
+
+    private void OnPieceDragStart(Square from)
+    {
+        if (_view is not { IsYourTurn: true } view || view.State.Board[from] is not { } piece || piece.Color != view.SeatColor)
+        {
+            return;
+        }
+
+        _error = null;
+        _selectedReserve = null;
+        _selected = from;
+    }
+
+    private async Task OnPieceDropAsync((Square From, Square To) drop)
+    {
+        if (_view is not { IsYourTurn: true } view)
+        {
+            return;
+        }
+
+        var moves = view.LegalMoves.Where(m => m.From == drop.From && m.To == drop.To).ToList();
+        if (moves.Count > 1)
+        {
+            _selected = drop.From;
+            _pendingPromotion = moves[0] with { Promotion = null };
+        }
+        else if (moves.Count == 1)
+        {
+            await SubmitAsync(moves[0]);
+        }
+    }
+
+    private void OnReserveDragStart(PieceType type)
+    {
+        if (_view is not { IsYourTurn: true } || !PlaceableTypes.Contains(type))
+        {
+            return;
+        }
+
+        _error = null;
+        _selected = null;
+        _selectedReserve = type;
+    }
+
+    private async Task OnReserveDropAsync((PieceType Type, Square Square) drop)
+    {
+        var placement = new PlaceAction(drop.Type, drop.Square);
+        if (_view is { IsYourTurn: true } view && view.LegalPlacements.Contains(placement))
+        {
+            await SubmitAsync(placement);
+        }
     }
 
     private Task SubmitAsync(GameAction action)
