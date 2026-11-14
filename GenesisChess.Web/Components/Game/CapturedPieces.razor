@@ -1,0 +1,52 @@
+@* Pieces a player has captured, plus their material lead (e.g. "+3") when ahead. *@
+
+@{
+    var captured = _balance.CapturedBy(Color);
+    var advantage = _balance.Advantage(Color);
+}
+@if (captured.Count > 0 || advantage > 0)
+{
+    <span class="captured" aria-label="@Label(captured, advantage)">
+        <span class="pieces" aria-hidden="true">
+            @foreach (var type in captured)
+            {
+                <span class="piece @PieceGlyph.CssClass(Color.Opponent())" title="@type">@PieceGlyph.For(type)</span>
+            }
+        </span>
+        @if (advantage > 0)
+        {
+            <span class="advantage" aria-hidden="true">+@advantage</span>
+        }
+    </span>
+}
+
+@code {
+    private IReadOnlyList<MoveRecord>? _replayed;
+    private MaterialBalance _balance = MaterialBalance.Empty;
+
+    /// <summary>The game's move history; captures are found by replaying it from the initial position.</summary>
+    [Parameter, EditorRequired]
+    public IReadOnlyList<MoveRecord> Moves { get; set; } = [];
+
+    /// <summary>The player whose captures are shown.</summary>
+    [Parameter]
+    public Color Color { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        // Each GameView carries a fresh list, so only replay when the history actually changed.
+        if (!ReferenceEquals(Moves, _replayed))
+        {
+            _balance = MaterialBalance.FromHistory(GameState.Initial(), Moves.Select(m => m.Action));
+            _replayed = Moves;
+        }
+    }
+
+    private string Label(IReadOnlyList<PieceType> captured, int advantage)
+    {
+        var pieces = captured.Count == 0 ? "nothing" : string.Join(", ", captured);
+        return advantage > 0
+            ? $"{Color} has captured {pieces}, up {advantage}"
+            : $"{Color} has captured {pieces}";
+    }
+}

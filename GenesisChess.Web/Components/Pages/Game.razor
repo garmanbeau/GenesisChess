@@ -36,6 +36,7 @@ else
                     {
                         <span class="muted">· waiting to join</span>
                     }
+                    <CapturedPieces Moves="view.Moves" Color="top" />
                 </div>
                 <ReserveTray Reserve="view.State.ReserveOf(top)" Color="top" />
                 @if (view.Clock is { IsUntimed: false } topClock)
@@ -64,6 +65,7 @@ else
                     {
                         <span class="muted">· you</span>
                     }
+                    <CapturedPieces Moves="view.Moves" Color="orientation" />
                 </div>
                 <ReserveTray Reserve="view.State.ReserveOf(orientation)"
                              Color="orientation"
