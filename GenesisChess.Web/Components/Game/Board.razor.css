@@ -134,3 +134,48 @@
     bottom: 2%;
     right: 5%;
 }
+
+/* Right-click annotations. ::deep because the drag preview is created by Board.razor.js
+   and so carries no CSS-isolation attribute. */
+.board-wrap {
+    position: relative;
+    width: 100%;
+}
+
+.board-wrap ::deep .annotations {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 4;
+    overflow: visible;
+}
+
+.board-wrap ::deep .ann-arrow {
+    fill: none;
+    stroke-width: 0.16;
+    stroke-linecap: butt;
+    stroke-linejoin: round;
+    opacity: 0.8;
+}
+
+.board-wrap ::deep .ann-circle {
+    fill: none;
+    stroke-width: 0.07;
+    opacity: 0.85;
+}
+
+.board-wrap ::deep .ann-head path {
+    stroke: none;
+}
+
+.board-wrap ::deep .ann-green { stroke: #15781b; }
+.board-wrap ::deep .ann-red { stroke: #c4302b; }
+.board-wrap ::deep .ann-blue { stroke: #1f5fbf; }
+.board-wrap ::deep .ann-yellow { stroke: #d8a400; }
+
+.board-wrap ::deep .ann-head.ann-green path { fill: #15781b; }
+.board-wrap ::deep .ann-head.ann-red path { fill: #c4302b; }
+.board-wrap ::deep .ann-head.ann-blue path { fill: #1f5fbf; }
+.board-wrap ::deep .ann-head.ann-yellow path { fill: #d8a400; }
