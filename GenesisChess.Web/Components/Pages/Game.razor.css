@@ -127,3 +127,36 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* Move history review: the board shows a past position and can't be played on. */
+.board-frame {
+    border-radius: 6px;
+    outline: 3px solid transparent;
+    outline-offset: 3px;
+    transition: outline-color 0.15s ease;
+}
+
+.board-frame.reviewing {
+    outline-color: var(--accent);
+}
+
+.review-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.4rem;
+    padding: 0.45rem 0.6rem;
+    border-radius: 8px;
+    background: var(--surface-2);
+    font-weight: 600;
+}
+
+.review-banner .btn {
+    padding: 0.3rem 0.7rem;
+}
+
+.new-move {
+    color: var(--danger);
+}
