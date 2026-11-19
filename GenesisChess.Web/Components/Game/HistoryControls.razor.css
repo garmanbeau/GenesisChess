@@ -1,0 +1,31 @@
+.history {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.35rem;
+    margin-top: 0.6rem;
+}
+
+.nav {
+    padding: 0.35rem 0;
+    font-size: 1rem;
+    line-height: 1;
+    position: relative;
+}
+
+.nav.playing {
+    background: var(--accent);
+    color: var(--accent-text);
+    border-color: var(--accent);
+}
+
+/* A dot on "latest" when moves were played while reviewing. */
+.nav.flagged::after {
+    content: "";
+    position: absolute;
+    top: 0.25rem;
+    right: 0.3rem;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    background: var(--danger);
+}
