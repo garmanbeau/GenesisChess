@@ -24,4 +24,21 @@ public sealed class GameService(IGameStore store, TimeProvider time)
     }
 
     public GameSession? Find(string id) => store.Find(id);
+
+    /// <summary>
+    /// Offers a rematch in a finished game, or accepts the opponent's offer. Accepting creates a new
+    /// game with the same time control and colors swapped; both players keep their tokens, and its id
+    /// is published as <see cref="GameView.RematchGameId"/>.
+    /// </summary>
+    public CommandResult OfferRematch(GameSession session, string? token)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        return session.OfferRematch(token, (whiteToken, blackToken) =>
+        {
+            var rematch = new GameSession(Identifiers.NewGameId(), session.TimeControl, time);
+            rematch.SeatPlayers(whiteToken, blackToken);
+            store.Add(rematch);
+            return rematch.Id;
+        });
+    }
 }

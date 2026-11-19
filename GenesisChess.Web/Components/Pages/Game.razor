@@ -164,8 +164,50 @@ else
 
             @if (view.Status == GameStatus.Finished)
             {
-                <div class="card actions">
-                    <a class="btn btn-primary" href="/">New game</a>
+                <div class="card actions rematch">
+                    @if (view.RematchGameId is { } rematchId)
+                    {
+                        <p class="offer"><strong>@(view.Seat == Seat.Spectator ? "The players started a rematch." : "Rematch started.")</strong></p>
+                        <div class="action-row">
+                            <button class="btn btn-primary" @onclick="() => GoToRematchAsync(rematchId)">
+                                @(view.Seat == Seat.Spectator ? "Watch the rematch" : "Go to rematch")
+                            </button>
+                            <a class="btn" href="/">New game</a>
+                        </div>
+                    }
+                    else if (view.Seat != Seat.Spectator)
+                    {
+                        @if (!view.OpponentConnected)
+                        {
+                            <p class="offer muted">Your opponent has left.</p>
+                        }
+                        else if (view.RematchOfferedBy == orientation.Opponent())
+                        {
+                            <p class="offer"><strong>@view.RematchOfferedBy offers a rematch.</strong></p>
+                        }
+
+                        <div class="action-row">
+                            @if (view.RematchOfferedBy == orientation.Opponent())
+                            {
+                                <button class="btn btn-primary" disabled="@(!view.OpponentConnected)" @onclick="RematchAsync">Accept rematch</button>
+                                <button class="btn" @onclick="() => Run(s => s.DeclineRematch(_token))">Decline</button>
+                            }
+                            else if (view.RematchOfferedBy == orientation)
+                            {
+                                <button class="btn" disabled>Rematch offered</button>
+                                <button class="btn" @onclick="() => Run(s => s.CancelRematch(_token))">Cancel</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-primary" disabled="@(!view.OpponentConnected)" @onclick="RematchAsync">Rematch</button>
+                            }
+                            <a class="btn" href="/">New game</a>
+                        </div>
+                    }
+                    else
+                    {
+                        <a class="btn btn-primary" href="/">New game</a>
+                    }
                 </div>
             }
 
@@ -200,6 +242,9 @@ else
     private bool _copied;
     private bool _confirmResign;
     private ElementReference _inviteInput;
+    private IDisposable? _presence;
+    private string? _rematchAtLoad;
+    private bool _followingRematch;
 
     // Move history review: local to this viewer, never sent to the game.
     private GameTimeline? _timeline;
@@ -240,9 +285,17 @@ else
     protected override async Task OnParametersSetAsync()
     {
         Unsubscribe();
+
+        // The same component instance is reused when following a rematch to a new game id.
+        _view = null;
+        _error = null;
+        _copied = false;
+        _confirmResign = false;
+        _followingRematch = false;
         _timeline = null;
         _viewedPly = null;
         _missedMoves = false;
+
         _session = Games.Find(Id);
         if (_session is not null)
         {
@@ -255,7 +308,9 @@ else
             }
 
             _token = joined.Token;
+            _presence = _session.Connect(_token);
             Refresh();
+            _rematchAtLoad = _view?.RematchGameId;
         }
 
         _loaded = true;
@@ -348,11 +403,50 @@ else
     }
 
     /// <summary>Raised on whichever thread changed the session; marshal onto this circuit.</summary>
-    private void OnSessionChanged(GameSession session) => _ = InvokeAsync(() =>
+    private void OnSessionChanged(GameSession session) => _ = InvokeAsync(async () =>
     {
+        if (!ReferenceEquals(session, _session))
+        {
+            return; // A late notification from a game this page has already left.
+        }
+
         Refresh();
         StateHasChanged();
+        await FollowRematchAsync();
     });
+
+    /// <summary>Offers a rematch, or accepts the opponent's offer.</summary>
+    private async Task RematchAsync()
+    {
+        Run(s => Games.OfferRematch(s, _token));
+        await FollowRematchAsync();
+    }
+
+    /// <summary>Players move to a rematch automatically when it starts while they're on this page.</summary>
+    private async Task FollowRematchAsync()
+    {
+        if (_view is { Seat: not Seat.Spectator, RematchGameId: { } next } && next != _rematchAtLoad)
+        {
+            await GoToRematchAsync(next);
+        }
+    }
+
+    private async Task GoToRematchAsync(string gameId)
+    {
+        if (_followingRematch)
+        {
+            return;
+        }
+
+        _followingRematch = true;
+        if (_token is not null)
+        {
+            // Both players keep their token in the rematch, so the new game recognises them.
+            await Tokens.SetAsync(gameId, _token);
+        }
+
+        Navigation.NavigateTo($"game/{gameId}");
+    }
 
     private void Run(Func<GameSession, CommandResult> command)
     {
@@ -387,6 +481,9 @@ else
         {
             _session.Changed -= OnSessionChanged;
         }
+
+        _presence?.Dispose();
+        _presence = null;
     }
 
     public void Dispose() => Unsubscribe();
