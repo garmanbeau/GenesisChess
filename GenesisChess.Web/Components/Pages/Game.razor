@@ -25,6 +25,8 @@ else
     var view = _view;
     var orientation = view.SeatColor ?? Color.White;
     var top = orientation.Opponent();
+    var shown = ShownState;
+    var canAct = CanAct;
 
     <div class="game">
         <section class="board-col">
@@ -37,24 +39,30 @@ else
                         <span class="muted">· waiting to join</span>
                     }
                 </div>
-                <ReserveTray Reserve="view.State.ReserveOf(top)" Color="top" />
+                <ReserveTray Reserve="shown.ReserveOf(top)" Color="top" />
                 @if (view.Clock is { IsUntimed: false } topClock)
                 {
-                    <ClockDisplay Snapshot="topClock" Side="ToClockSide(top)" />
+                    <ClockDisplay Snapshot="topClock" TimeControl="view.TimeControl" Side="ToClockSide(top)" />
                 }
             </div>
 
             @* Keyed by game so navigating to another game starts a fresh board (no stale annotations). *@
-            <Board @key="Id"
-                   State="view.State"
-                   Orientation="orientation"
-                   Interactive="view.IsYourTurn"
-                   Selected="_selected"
-                   Targets="Targets"
-                   LastAction="LastActionSquares"
-                   CheckedKing="view.InCheck ? view.State.Board.FindKing(view.State.SideToMove) : null"
-                   PlacementZone="_selectedReserve is null ? null : orientation"
-                   OnSquareClick="OnSquareClickAsync" />
+            @* While reviewing, the board shows a rebuilt past position and is read-only. Changing the shown
+               position changes State.PositionHistory, which also clears the viewer's arrows. *@
+            <div class="board-frame @(Reviewing ? "reviewing" : null)">
+                <Board @key="Id"
+                       State="shown"
+                       Orientation="orientation"
+                       Interactive="canAct"
+                       Selected="_selected"
+                       Targets="Targets"
+                       LastAction="LastActionSquares"
+                       CheckedKing="Attacks.IsInCheck(shown.Board, shown.SideToMove) ? shown.Board.FindKing(shown.SideToMove) : null"
+                       PlacementZone="_selectedReserve is null ? null : orientation"
+                       OnSquareClick="OnSquareClickAsync"
+                       OnPieceDragStart="OnPieceDragStart"
+                       OnPieceDrop="OnPieceDropAsync" />
+            </div>
 
             <div class="player-strip">
                 <div class="who">
@@ -65,15 +73,18 @@ else
                         <span class="muted">· you</span>
                     }
                 </div>
-                <ReserveTray Reserve="view.State.ReserveOf(orientation)"
+                <ReserveTray Reserve="shown.ReserveOf(orientation)"
                              Color="orientation"
-                             Interactive="view.IsYourTurn"
+                             Interactive="canAct"
                              Placeable="PlaceableTypes"
                              Selected="_selectedReserve"
-                             OnSelect="SelectReserve" />
+                             OnSelect="SelectReserve"
+                             OnDragStart="OnReserveDragStart"
+                             OnDrop="OnReserveDropAsync" />
                 @if (view.Clock is { IsUntimed: false } bottomClock)
                 {
-                    <ClockDisplay Snapshot="bottomClock" Side="ToClockSide(orientation)" />
+                    <ClockDisplay Snapshot="bottomClock" TimeControl="view.TimeControl" Side="ToClockSide(orientation)"
+                                  WarnWithSound="view.Seat != Seat.Spectator" />
                 }
             </div>
         </section>
@@ -82,6 +93,19 @@ else
             <div class="card status @(view.IsYourTurn ? "your-turn" : null)" role="status">
                 <strong>@StatusText(view)</strong>
                 <span class="muted tc">@view.TimeControl.Category · @view.TimeControl</span>
+                @if (_viewedPly is { } viewed)
+                {
+                    <div class="review-banner">
+                        <span>
+                            Viewing @DescribePly(viewed)
+                            @if (_missedMoves)
+                            {
+                                <span class="new-move">&nbsp;· new move played</span>
+                            }
+                        </span>
+                        <button class="btn btn-primary" @onclick="() => Navigate(_timeline!.LatestPly)">Back to live</button>
+                    </div>
+                }
                 @if (_error is not null)
                 {
                     <p class="error-text">@_error</p>
@@ -189,7 +213,11 @@ else
 
             <div class="card">
                 <h2 class="panel-title">Moves</h2>
-                <MoveList Moves="view.Moves" />
+                <MoveList Moves="view.Moves" ViewedPly="_viewedPly" OnSelect="Navigate" />
+                <HistoryControls ViewedPly="_viewedPly ?? view.Moves.Count"
+                                 LatestPly="view.Moves.Count"
+                                 HasNewMoves="_missedMoves"
+                                 OnNavigate="Navigate" />
             </div>
         </aside>
     </div>
@@ -218,6 +246,11 @@ else
     private string? _rematchAtLoad;
     private bool _followingRematch;
 
+    // Move history review: local to this viewer, never sent to the game.
+    private GameTimeline? _timeline;
+    private int? _viewedPly; // null = following the live position
+    private bool _missedMoves; // moves arrived while reviewing
+
     [Parameter]
     public string Id { get; set; } = string.Empty;
 
@@ -232,7 +265,17 @@ else
     private IReadOnlySet<PieceType> PlaceableTypes =>
         _view?.LegalPlacements.Select(p => p.Type).ToHashSet() ?? [];
 
-    private IReadOnlySet<Square> LastActionSquares => _view?.LastAction switch
+    private bool Reviewing => _viewedPly is not null;
+
+    /// <summary>Whether this viewer may move or place right now: their turn, and looking at the live position.</summary>
+    private bool CanAct => !Reviewing && _view is { IsYourTurn: true };
+
+    /// <summary>The position on the board: the live one, or the rebuilt past one being reviewed.</summary>
+    private GameState ShownState => _viewedPly is { } ply && _timeline is not null ? _timeline.StateAt(ply) : _view!.State;
+
+    private GameAction? ShownAction => _viewedPly is { } ply ? _timeline?.ActionAt(ply) : _view?.LastAction;
+
+    private IReadOnlySet<Square> LastActionSquares => ShownAction switch
     {
         MoveAction m => new HashSet<Square> { m.From, m.To },
         PlaceAction p => new HashSet<Square> { p.Square },
@@ -249,6 +292,9 @@ else
         _copied = false;
         _confirmResign = false;
         _followingRematch = false;
+        _timeline = null;
+        _viewedPly = null;
+        _missedMoves = false;
 
         _session = Games.Find(Id);
         if (_session is not null)
@@ -273,7 +319,8 @@ else
     private void Refresh()
     {
         _view = _session?.GetView(_token);
-        if (_view is not { IsYourTurn: true })
+        SyncTimeline();
+        if (!CanAct)
         {
             _selected = null;
             _selectedReserve = null;
@@ -284,6 +331,75 @@ else
         {
             _confirmResign = false;
         }
+    }
+
+    /// <summary>
+    /// Keeps the replay cache in step with the live move list. While reviewing, new moves don't move the view;
+    /// they are flagged instead. On the latest position (_viewedPly null) the board simply follows along.
+    /// </summary>
+    private void SyncTimeline()
+    {
+        if (_view is null)
+        {
+            _timeline = null;
+            return;
+        }
+
+        _timeline ??= new GameTimeline(_view.InitialState);
+        var before = _timeline.LatestPly;
+        _timeline.Sync(_view.Moves);
+
+        if (_viewedPly is { } ply)
+        {
+            if (ply >= _timeline.LatestPly)
+            {
+                // History shrank under us (it shouldn't); fall back to live.
+                _viewedPly = null;
+                _missedMoves = false;
+            }
+            else if (_timeline.LatestPly > before)
+            {
+                _missedMoves = true;
+            }
+        }
+    }
+
+    /// <summary>Shows the position after <paramref name="ply"/> actions; the latest ply means back to live.</summary>
+    private void Navigate(int ply)
+    {
+        if (_timeline is null)
+        {
+            return;
+        }
+
+        ply = Math.Clamp(ply, 0, _timeline.LatestPly);
+        if (ply == _timeline.LatestPly)
+        {
+            _viewedPly = null;
+            _missedMoves = false;
+        }
+        else
+        {
+            _viewedPly = ply;
+        }
+
+        // Half-finished input belongs to the live position.
+        _selected = null;
+        _selectedReserve = null;
+        _pendingPromotion = null;
+        _error = null;
+    }
+
+    private string DescribePly(int ply)
+    {
+        if (ply == 0 || _timeline is null)
+        {
+            return "the starting position";
+        }
+
+        var move = _timeline.Moves[ply - 1];
+        var number = (ply + 1) / 2;
+        return $"move {number}{(move.By == Color.White ? "." : "…")} {move.San}";
     }
 
     /// <summary>Raised on whichever thread changed the session; marshal onto this circuit.</summary>
@@ -394,7 +510,7 @@ else
 
     private async Task OnSquareClickAsync(Square square)
     {
-        if (_view is not { IsYourTurn: true } view)
+        if (!CanAct || _view is not { } view)
         {
             return;
         }
@@ -430,6 +546,61 @@ else
 
         var piece = view.State.Board[square];
         _selected = piece is { } p && p.Color == view.SeatColor && square != _selected ? square : null;
+    }
+
+    // Drag and drop. A drag start selects (so targets show while dragging); a drop is checked against the
+    // legal moves here, so an illegal drop never reaches the session and just leaves the piece selected.
+
+    private void OnPieceDragStart(Square from)
+    {
+        if (!CanAct || _view is not { } view || view.State.Board[from] is not { } piece || piece.Color != view.SeatColor)
+        {
+            return;
+        }
+
+        _error = null;
+        _selectedReserve = null;
+        _selected = from;
+    }
+
+    private async Task OnPieceDropAsync((Square From, Square To) drop)
+    {
+        if (!CanAct || _view is not { } view)
+        {
+            return;
+        }
+
+        var moves = view.LegalMoves.Where(m => m.From == drop.From && m.To == drop.To).ToList();
+        if (moves.Count > 1)
+        {
+            _selected = drop.From;
+            _pendingPromotion = moves[0] with { Promotion = null };
+        }
+        else if (moves.Count == 1)
+        {
+            await SubmitAsync(moves[0]);
+        }
+    }
+
+    private void OnReserveDragStart(PieceType type)
+    {
+        if (!CanAct || !PlaceableTypes.Contains(type))
+        {
+            return;
+        }
+
+        _error = null;
+        _selected = null;
+        _selectedReserve = type;
+    }
+
+    private async Task OnReserveDropAsync((PieceType Type, Square Square) drop)
+    {
+        var placement = new PlaceAction(drop.Type, drop.Square);
+        if (CanAct && _view is { } view && view.LegalPlacements.Contains(placement))
+        {
+            await SubmitAsync(placement);
+        }
     }
 
     private Task SubmitAsync(GameAction action)

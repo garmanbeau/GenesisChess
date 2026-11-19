@@ -21,6 +21,7 @@ public sealed class GameSession : IDisposable
     private ITimer? _flagTimer;
     private string? _whiteToken;
     private string? _blackToken;
+    private readonly GameState _initialState;
     private GameState _state;
     private GameOutcome? _outcome;
     private Color? _drawOfferedBy;
@@ -34,7 +35,7 @@ public sealed class GameSession : IDisposable
         Id = id;
         TimeControl = timeControl;
         _time = time;
-        _state = initialState ?? GameState.Initial();
+        _initialState = _state = initialState ?? GameState.Initial();
         _clock = new ChessClock(timeControl, time);
         CreatedAt = LastActivity = time.GetUtcNow();
     }
@@ -323,6 +324,7 @@ public sealed class GameSession : IDisposable
                 TimeControl = TimeControl,
                 Status = StatusUnsafe,
                 Seat = seat,
+                InitialState = _initialState,
                 State = _state,
                 Outcome = _outcome,
                 InCheck = Attacks.IsInCheck(_state.Board, _state.SideToMove),

@@ -74,6 +74,37 @@ public sealed record TimeControl
         }
     }
 
+    /// <summary>Shortest low-time warning, so bullet games still get a usable heads-up.</summary>
+    public static TimeSpan MinLowTimeThreshold { get; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>Longest low-time warning, so slow games don't sit in the warning state for minutes.</summary>
+    public static TimeSpan MaxLowTimeThreshold { get; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Remaining time below which a clock counts as low (red clock and warning sound):
+    /// 10% of the estimated game length (base + 40 increments, as in <see cref="Category"/>),
+    /// clamped to [<see cref="MinLowTimeThreshold"/>, <see cref="MaxLowTimeThreshold"/>].
+    /// Zero when untimed, so nothing is ever low.
+    /// </summary>
+    public TimeSpan LowTimeThreshold
+    {
+        get
+        {
+            if (IsUntimed)
+            {
+                return TimeSpan.Zero;
+            }
+
+            var tenth = (Base + (Increment * 40)) / 10;
+            return tenth < MinLowTimeThreshold ? MinLowTimeThreshold
+                : tenth > MaxLowTimeThreshold ? MaxLowTimeThreshold
+                : tenth;
+        }
+    }
+
+    /// <summary>True when <paramref name="remaining"/> is below <see cref="LowTimeThreshold"/>.</summary>
+    public bool IsLowTime(TimeSpan remaining) => remaining < LowTimeThreshold;
+
     /// <summary>Parses "5+3" (minutes + seconds) or "untimed".</summary>
     public static bool TryParse(string? text, out TimeControl timeControl)
     {

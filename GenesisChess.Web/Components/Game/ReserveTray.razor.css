@@ -80,3 +80,9 @@
     line-height: 1.2rem;
     text-align: center;
 }
+
+/* Placeable pieces can be dragged onto the board (ReserveTray.razor.js); keep touch drags from scrolling the page. */
+.tray.interactive .slot:not(:disabled) {
+    touch-action: none;
+    -webkit-touch-callout: none;
+}

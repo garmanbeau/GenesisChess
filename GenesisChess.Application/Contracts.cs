@@ -57,6 +57,9 @@ public sealed record GameView
 
     public required Seat Seat { get; init; }
 
+    /// <summary>The position before the first action; replaying <see cref="Moves"/> from it rebuilds any past position.</summary>
+    public required GameState InitialState { get; init; }
+
     public required GameState State { get; init; }
 
     public GameOutcome? Outcome { get; init; }
