@@ -22,11 +22,20 @@
 
 @code {
     private IReadOnlyList<MoveRecord>? _replayed;
+    private int _replayedPly = -1;
     private MaterialBalance _balance = MaterialBalance.Empty;
 
-    /// <summary>The game's move history; captures are found by replaying it from the initial position.</summary>
+    /// <summary>The position the game started from.</summary>
+    [Parameter, EditorRequired]
+    public GameState Initial { get; set; } = GameState.Initial();
+
+    /// <summary>The game's move history; captures are found by replaying it from <see cref="Initial"/>.</summary>
     [Parameter, EditorRequired]
     public IReadOnlyList<MoveRecord> Moves { get; set; } = [];
+
+    /// <summary>Replay only this many plies (the position being reviewed); null for the whole history.</summary>
+    [Parameter]
+    public int? Ply { get; set; }
 
     /// <summary>The player whose captures are shown.</summary>
     [Parameter]
@@ -34,11 +43,13 @@
 
     protected override void OnParametersSet()
     {
-        // Each GameView carries a fresh list, so only replay when the history actually changed.
-        if (!ReferenceEquals(Moves, _replayed))
+        // Each GameView carries a fresh list, so only replay when the history or viewed ply changed.
+        var ply = Math.Clamp(Ply ?? Moves.Count, 0, Moves.Count);
+        if (!ReferenceEquals(Moves, _replayed) || ply != _replayedPly)
         {
-            _balance = MaterialBalance.FromHistory(GameState.Initial(), Moves.Select(m => m.Action));
+            _balance = MaterialBalance.FromHistory(Initial, Moves.Take(ply).Select(m => m.Action));
             _replayed = Moves;
+            _replayedPly = ply;
         }
     }
 
