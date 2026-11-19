@@ -1,6 +1,8 @@
-@* A player's reserve: the pieces they can still place. *@
+@* A player's reserve: the pieces they can still place. Pieces can be clicked (then a square) or dragged onto the board. *@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
 
-<div class="tray @(Interactive ? "interactive" : null)" aria-label="@Color reserve">
+<div class="tray @(Interactive ? "interactive" : null)" aria-label="@Color reserve" @ref="_root">
     @if (Reserve.IsEmpty)
     {
         <span class="empty muted">Reserve empty</span>
@@ -19,6 +21,7 @@
             <button type="button"
                     class="slot @(type == Selected ? "selected" : null) @(placeable ? null : "inert")"
                     disabled="@(!placeable)"
+                    data-type="@type"
                     aria-pressed="@(type == Selected)"
                     aria-label="@($"Place {Color} {type}, {count} left")"
                     @onclick="() => OnSelect.InvokeAsync(type)">
@@ -32,6 +35,13 @@
 @code {
     private static readonly PieceType[] Order =
         [PieceType.Queen, PieceType.Rook, PieceType.Bishop, PieceType.Knight, PieceType.Pawn];
+
+    private ElementReference _root;
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _handle;
+    private DotNetObjectReference<ReserveTray>? _selfRef;
+    private bool _attaching;
+    private bool _disposed;
 
     [Parameter, EditorRequired]
     public Reserve Reserve { get; set; } = Reserve.Empty;
@@ -52,4 +62,84 @@
 
     [Parameter]
     public EventCallback<PieceType> OnSelect { get; set; }
+
+    /// <summary>A drag of this reserve piece has begun (the page should select it to show where it can go).</summary>
+    [Parameter]
+    public EventCallback<PieceType> OnDragStart { get; set; }
+
+    /// <summary>A dragged reserve piece was released on a board square. Not validated: the page must check legality.</summary>
+    [Parameter]
+    public EventCallback<(PieceType Type, Square Square)> OnDrop { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Drag only matters for a tray the viewer can place from; the opponent's tray never loads the script.
+        if (!Interactive || _attaching || _disposed)
+        {
+            return;
+        }
+
+        _attaching = true;
+        _selfRef = DotNetObjectReference.Create(this);
+        try
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Game/ReserveTray.razor.js");
+            if (!_disposed)
+            {
+                _handle = await _module.InvokeAsync<IJSObjectReference>("attach", _root, _selfRef);
+            }
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or JSException or OperationCanceledException)
+        {
+            // Dragging is a nicety: click-to-place still works without the script.
+            return;
+        }
+
+        if (_disposed)
+        {
+            await ReleaseJsAsync();
+        }
+    }
+
+    [JSInvokable]
+    public Task DragStart(string type) =>
+        Enum.TryParse<PieceType>(type, out var t) && Interactive ? OnDragStart.InvokeAsync(t) : Task.CompletedTask;
+
+    [JSInvokable]
+    public Task Drop(string type, int file, int rank) =>
+        Enum.TryParse<PieceType>(type, out var t) && Interactive && file is >= 0 and <= 7 && rank is >= 0 and <= 7
+            ? OnDrop.InvokeAsync((t, new Square(file, rank)))
+            : Task.CompletedTask;
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        await ReleaseJsAsync();
+        _selfRef?.Dispose();
+    }
+
+    private async Task ReleaseJsAsync()
+    {
+        var handle = _handle;
+        var module = _module;
+        _handle = null;
+        _module = null;
+        try
+        {
+            if (handle is not null)
+            {
+                await handle.InvokeVoidAsync("dispose");
+                await handle.DisposeAsync();
+            }
+
+            if (module is not null)
+            {
+                await module.DisposeAsync();
+            }
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or JSException or OperationCanceledException)
+        {
+            // The circuit is gone or JS already dropped the handle: nothing left to clean up.
+        }
+    }
 }

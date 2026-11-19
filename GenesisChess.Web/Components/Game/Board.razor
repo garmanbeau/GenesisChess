@@ -62,6 +62,8 @@
 </svg>
 @* Owned by Board.razor.js: holds the arrow or circle being dragged. Blazor never renders children here. *@
 <svg class="annotations annotation-draft" viewBox="0 0 8 8" aria-hidden="true"></svg>
+@* Owned by Board.razor.js: outlines the square under a dragged piece. Blazor never changes it after first render. *@
+<div class="drag-hover" aria-hidden="true"></div>
 </div>
 
 @code {
@@ -109,6 +111,14 @@
     [Parameter]
     public EventCallback<Square> OnSquareClick { get; set; }
 
+    /// <summary>A drag of the piece on this square has begun (the page should select it to show its targets).</summary>
+    [Parameter]
+    public EventCallback<Square> OnPieceDragStart { get; set; }
+
+    /// <summary>A dragged piece was released on another square. Not validated: the page must check legality.</summary>
+    [Parameter]
+    public EventCallback<(Square From, Square To)> OnPieceDrop { get; set; }
+
     private int[] Ranks => Orientation == Color.White ? [7, 6, 5, 4, 3, 2, 1, 0] : [0, 1, 2, 3, 4, 5, 6, 7];
 
     private int[] Files => Orientation == Color.White ? [0, 1, 2, 3, 4, 5, 6, 7] : [7, 6, 5, 4, 3, 2, 1, 0];
@@ -139,6 +149,12 @@
         if (PlacementZone is { } zone && zone.IsOwnHalf(square.Rank))
         {
             classes.Add("zone");
+        }
+
+        // Board.razor.js only starts piece drags from these squares.
+        if (Interactive && piece is { } p && p.Color == State.SideToMove)
+        {
+            classes.Add("draggable");
         }
 
         return string.Join(' ', classes);
@@ -180,8 +196,8 @@
         }
         catch (Exception ex) when (ex is JSException or OperationCanceledException)
         {
-            // Annotations are a nicety: if the module can't load, leave them off rather than crash the circuit.
-            Logger.LogWarning(ex, "Board annotations disabled: the annotation script failed to load.");
+            // Annotations and dragging are niceties (click-to-move still works): if the module can't load, leave them off rather than crash the circuit.
+            Logger.LogWarning(ex, "Board annotations and dragging disabled: the board script failed to load.");
             return;
         }
 
@@ -243,9 +259,34 @@
         }
 
         StateHasChanged();
-
-        static bool InRange(int v) => v is >= 0 and <= 7;
     }
+
+    /// <summary>Called from JS once a left-button or touch press on a piece passes the drag threshold.</summary>
+    [JSInvokable]
+    public Task PieceDragStart(int file, int rank, int ply)
+    {
+        if (ply != State.PositionHistory.Count || !InRange(file) || !InRange(rank))
+        {
+            return Task.CompletedTask;
+        }
+
+        ClearAnnotations();
+        return OnPieceDragStart.InvokeAsync(new Square(file, rank));
+    }
+
+    /// <summary>Called from JS when a dragged piece is released on a different square.</summary>
+    [JSInvokable]
+    public Task PieceDrop(int fromFile, int fromRank, int toFile, int toRank, int ply)
+    {
+        if (ply != State.PositionHistory.Count || !InRange(fromFile) || !InRange(fromRank) || !InRange(toFile) || !InRange(toRank))
+        {
+            return Task.CompletedTask;
+        }
+
+        return OnPieceDrop.InvokeAsync((new Square(fromFile, fromRank), new Square(toFile, toRank)));
+    }
+
+    private static bool InRange(int v) => v is >= 0 and <= 7;
 
     private Task OnLeftClickAsync(Square square)
     {

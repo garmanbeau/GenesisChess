@@ -1,0 +1,195 @@
+@* Step through the game: start / back / replay / forward / latest, plus ←/→/Home/End anywhere on the page.
+   Purely navigational: it reports the ply to show and the page decides what that means. *@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="history" role="toolbar" aria-label="Move history">
+    <button type="button" class="btn nav" title="Start (Home)" aria-label="Go to start"
+            disabled="@(ViewedPly == 0)" @onclick="() => GoAsync(0)">⏮</button>
+    <button type="button" class="btn nav" title="Back (←)" aria-label="Back one move"
+            disabled="@(ViewedPly == 0)" @onclick="() => GoAsync(ViewedPly - 1)">◀</button>
+    <button type="button" class="btn nav replay @(_replay is null ? null : "playing")"
+            title="@(_replay is null ? "Replay the game" : "Pause replay")"
+            aria-label="@(_replay is null ? "Replay the game" : "Pause replay")"
+            aria-pressed="@(_replay is not null)"
+            disabled="@(LatestPly == 0)" @onclick="ToggleReplayAsync">@(_replay is null ? "▷" : "❚❚")</button>
+    <button type="button" class="btn nav" title="Forward (→)" aria-label="Forward one move"
+            disabled="@(ViewedPly >= LatestPly)" @onclick="() => GoAsync(ViewedPly + 1)">▶</button>
+    <button type="button" class="btn nav @(HasNewMoves ? "flagged" : null)" title="Latest (End)"
+            aria-label="@(HasNewMoves ? "Go to latest move (new moves played)" : "Go to latest move")"
+            disabled="@(ViewedPly >= LatestPly)" @onclick="() => GoAsync(LatestPly)">⏭</button>
+</div>
+
+@code {
+    private static readonly TimeSpan ReplayInterval = TimeSpan.FromSeconds(1);
+
+    private CancellationTokenSource? _replay;
+    private int _replayPly;
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _handle;
+    private DotNetObjectReference<HistoryControls>? _selfRef;
+    private bool _disposed;
+
+    /// <summary>Ply on the board: 0 is the start, <see cref="LatestPly"/> is the live position.</summary>
+    [Parameter]
+    public int ViewedPly { get; set; }
+
+    [Parameter]
+    public int LatestPly { get; set; }
+
+    /// <summary>Moves arrived while the viewer was looking at an earlier position.</summary>
+    [Parameter]
+    public bool HasNewMoves { get; set; }
+
+    /// <summary>Raised with the ply to show, already clamped to 0..LatestPly.</summary>
+    [Parameter]
+    public EventCallback<int> OnNavigate { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        // Any navigation that didn't come from the replay itself (a click in the move list, say) stops it.
+        if (_replay is not null && ViewedPly != _replayPly)
+        {
+            StopReplay();
+        }
+    }
+
+    private Task GoAsync(int ply)
+    {
+        StopReplay();
+        return NavigateAsync(ply);
+    }
+
+    private Task NavigateAsync(int ply)
+    {
+        ply = Math.Clamp(ply, 0, LatestPly);
+        return ply == ViewedPly ? Task.CompletedTask : OnNavigate.InvokeAsync(ply);
+    }
+
+    private async Task ToggleReplayAsync()
+    {
+        if (_replay is not null)
+        {
+            StopReplay();
+            return;
+        }
+
+        var replay = _replay = new CancellationTokenSource();
+        // From the live position a replay starts over; from an earlier one it carries on from there.
+        _replayPly = ViewedPly >= LatestPly ? 0 : ViewedPly;
+        await NavigateAsync(_replayPly);
+        _ = RunReplayAsync(replay.Token);
+    }
+
+    private async Task RunReplayAsync(CancellationToken cancellation)
+    {
+        using var timer = new PeriodicTimer(ReplayInterval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellation))
+            {
+                // Continuations resume on this circuit's dispatcher, so touching component state is safe.
+                if (_replayPly >= LatestPly)
+                {
+                    break;
+                }
+
+                _replayPly++; // Set before navigating: the parent re-renders us synchronously.
+                await OnNavigate.InvokeAsync(_replayPly);
+                if (_replayPly >= LatestPly)
+                {
+                    break;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (!cancellation.IsCancellationRequested && !_disposed)
+        {
+            StopReplay();
+            StateHasChanged();
+        }
+    }
+
+    private void StopReplay()
+    {
+        _replay?.Cancel();
+        _replay?.Dispose();
+        _replay = null;
+    }
+
+    /// <summary>Called from JS for ←, →, Home and End when focus is not in a text field.</summary>
+    [JSInvokable]
+    public Task OnHistoryKey(string key) => key switch
+    {
+        "ArrowLeft" => GoAsync(ViewedPly - 1),
+        "ArrowRight" => GoAsync(ViewedPly + 1),
+        "Home" => GoAsync(0),
+        "End" => GoAsync(LatestPly),
+        _ => Task.CompletedTask,
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _selfRef = DotNetObjectReference.Create(this);
+        try
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Game/HistoryControls.razor.js");
+            if (!_disposed)
+            {
+                _handle = await _module.InvokeAsync<IJSObjectReference>("attach", _selfRef);
+            }
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or JSException or OperationCanceledException)
+        {
+            // Keyboard shortcuts are a convenience; the buttons still work.
+            return;
+        }
+
+        if (_disposed)
+        {
+            await ReleaseJsAsync();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        StopReplay();
+        await ReleaseJsAsync();
+        _selfRef?.Dispose();
+    }
+
+    private async Task ReleaseJsAsync()
+    {
+        var handle = _handle;
+        var module = _module;
+        _handle = null;
+        _module = null;
+        try
+        {
+            if (handle is not null)
+            {
+                await handle.InvokeVoidAsync("dispose");
+                await handle.DisposeAsync();
+            }
+
+            if (module is not null)
+            {
+                await module.DisposeAsync();
+            }
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or JSException or OperationCanceledException)
+        {
+            // The circuit is gone; nothing left to clean up in the browser.
+        }
+    }
+}

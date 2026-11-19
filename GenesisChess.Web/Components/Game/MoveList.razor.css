@@ -35,11 +35,34 @@ li:nth-child(odd) {
     font-weight: 600;
 }
 
-.ply.drop {
+.ply.drop:not(.current) {
     color: var(--accent);
 }
 
 .ply.latest {
     text-decoration: underline;
     text-underline-offset: 0.2em;
+}
+
+button.ply {
+    font: inherit;
+    font-weight: 600;
+    color: inherit;
+    text-align: left;
+    background: none;
+    border: 0;
+    border-radius: 4px;
+    padding: 0 0.3rem;
+    margin: 0;
+    cursor: pointer;
+    justify-self: start;
+}
+
+button.ply:hover {
+    background: var(--surface);
+}
+
+button.ply.current {
+    background: var(--accent);
+    color: var(--accent-text);
 }

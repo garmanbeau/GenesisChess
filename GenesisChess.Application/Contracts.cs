@@ -57,6 +57,9 @@ public sealed record GameView
 
     public required Seat Seat { get; init; }
 
+    /// <summary>The position before the first action; replaying <see cref="Moves"/> from it rebuilds any past position.</summary>
+    public required GameState InitialState { get; init; }
+
     public required GameState State { get; init; }
 
     public GameOutcome? Outcome { get; init; }
@@ -70,6 +73,18 @@ public sealed record GameView
     public bool BlackSeated { get; init; }
 
     public Color? DrawOfferedBy { get; init; }
+
+    /// <summary>Whether White currently has the game open.</summary>
+    public bool WhiteConnected { get; init; }
+
+    /// <summary>Whether Black currently has the game open.</summary>
+    public bool BlackConnected { get; init; }
+
+    /// <summary>The player with a pending rematch offer, if any.</summary>
+    public Color? RematchOfferedBy { get; init; }
+
+    /// <summary>Id of the rematch game once it has started.</summary>
+    public string? RematchGameId { get; init; }
 
     /// <summary>Legal moves for this viewer; empty unless it is their turn.</summary>
     public IReadOnlyList<MoveAction> LegalMoves { get; init; } = [];
@@ -86,6 +101,14 @@ public sealed record GameView
         Seat.White => Color.White,
         Seat.Black => Color.Black,
         _ => null,
+    };
+
+    /// <summary>Whether this viewer's opponent has the game open; false for spectators.</summary>
+    public bool OpponentConnected => SeatColor switch
+    {
+        Color.White => BlackConnected,
+        Color.Black => WhiteConnected,
+        _ => false,
     };
 
     public bool IsYourTurn => Status == GameStatus.InProgress && SeatColor == State.SideToMove;
