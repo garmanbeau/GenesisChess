@@ -42,7 +42,7 @@ else
                 <ReserveTray Reserve="shown.ReserveOf(top)" Color="top" />
                 @if (view.Clock is { IsUntimed: false } topClock)
                 {
-                    <ClockDisplay Snapshot="topClock" Side="ToClockSide(top)" />
+                    <ClockDisplay Snapshot="topClock" TimeControl="view.TimeControl" Side="ToClockSide(top)" />
                 }
             </div>
 
@@ -79,7 +79,8 @@ else
                              OnSelect="SelectReserve" />
                 @if (view.Clock is { IsUntimed: false } bottomClock)
                 {
-                    <ClockDisplay Snapshot="bottomClock" Side="ToClockSide(orientation)" />
+                    <ClockDisplay Snapshot="bottomClock" TimeControl="view.TimeControl" Side="ToClockSide(orientation)"
+                                  WarnWithSound="view.Seat != Seat.Spectator" />
                 }
             </div>
         </section>
